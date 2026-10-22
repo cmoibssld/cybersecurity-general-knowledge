@@ -1,5 +1,6 @@
 use std::path::PathBuf;
-use std::{collections::HashMap, fs::create_dir_all};
+use std::sync::Mutex;
+use std::{collections::VecDeque, fs::create_dir_all};
 
 use clap::{
     Parser,
@@ -60,11 +61,8 @@ struct Param {
 //
 // Because of multiple links at the same time, tokio and async seemed the best option
 
-async fn send_request(
-    param: &Param,
-    client: &Client,
-) -> Result<Response, Box<dyn std::error::Error>> {
-    let response = client.get(&param.url).send().await?;
+async fn send_request(url: &str, client: &Client) -> Result<Response, Box<dyn std::error::Error>> {
+    let response = client.get(url).send().await?;
     Ok(response)
 }
 
@@ -75,22 +73,48 @@ fn look_for_images(response: &Response) {
     }
 }
 
+async fn search_page(
+    client: &Client,
+    response: &Response,
+    dwl_path: &PathBuf,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+}
+
+fn add_new_urls(next_urls: Vec<String>, queue: &mut VecDeque<(&str, bool)>) {}
+
 #[tokio::main]
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let param = Param::parse();
     println!("url: {}", param.url);
     println!("recursive: {}, level: {}", param.recursive, param.level);
     println!("path to save: {}", param.path.display());
 
-    let client = Client::new(); // blocking !! For now at least
-    let mut queue: HashMap<bool, &str> = HashMap::new();
-    let first = get_first_response(&param, &client)?;
-    look_for_images(&first);
-    if param.recursive == false {
-        return Ok(());
+    let client = Client::new();
+    let mut queue: VecDeque<(&str, bool)> = VecDeque::new();
+
+    queue.push_front((&param.url, false));
+
+    for i in 0..param.level {
+        println!("Going at level {i} of depth in the website");
+        for (url, st) in queue.clone().iter_mut() {
+            if *st == true {
+                continue;
+            }
+            // don't know if the lock is permanent but I just want the iter first then to release the lock
+            let response = send_request(url, &client).await;
+            *st = true;
+            if response.is_err() {
+                eprintln!("Failed request: {}", url);
+                continue;
+            }
+            let next_urls: Vec<String> =
+                search_page(&client, &response.unwrap(), &param.path).await?;
+            add_new_urls(next_urls, &mut queue);
+            // I need the lock here to add new layer of depth to the queue
+        }
+        if param.recursive == false {
+            break;
+        }
     }
-    println!("coming here");
-    for lv in 1..param.level {
-        println!("recursing level {lv}");
-    }
+    Ok(())
 }

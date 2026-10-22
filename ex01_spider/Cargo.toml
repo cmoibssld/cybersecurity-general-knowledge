@@ -1,6 +1,9 @@
 [package]
-name = "ex01_spider"
+name = "spider"
 version = "0.1.0"
 edition = "2024"
+about = "Download images from a website with an URL"
 
 [dependencies]
+clap = { version = "4.6.7", features = ["derive"] }
+reqwest = "0.13.5"

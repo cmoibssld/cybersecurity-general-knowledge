@@ -1,4 +1,4 @@
-use std::env;
+use std::fs::create_dir_all;
 use std::path::PathBuf;
 
 use clap::{
@@ -17,7 +17,12 @@ fn parse_directory(value: &str) -> Result<PathBuf, String> {
     }
     let path = PathBuf::from(value);
     if !path.is_dir() {
-        return Err("path must point to an existing directory".into());
+        match create_dir_all(&path) {
+            Ok(_) => {
+                return Ok(path);
+            }
+            Err(_) => return Err("IO error".into()),
+        }
     }
     Ok(path)
 }

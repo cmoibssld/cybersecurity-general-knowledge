@@ -1,45 +1,53 @@
-use clap::Parser;
-use reqwest::Client;
 use std::env;
+use std::path::PathBuf;
 
-// Algo:
-// look for option. set option
-// create a client.
-// Make a request on the URL
+use clap::{
+    Parser,
+    builder::{ArgPredicate, OsStr},
+};
+use reqwest::Client;
+
+fn get_default_dl_path() -> PathBuf {
+    PathBuf::from("./data")
+}
+
+fn parse_directory(value: &str) -> Result<PathBuf, String> {
+    if value.is_empty() {
+        return Err("path must not be empty".into());
+    }
+    let path = PathBuf::from(value);
+    if !path.is_dir() {
+        return Err("path must point to an existing directory".into());
+    }
+    Ok(path)
+}
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    /// URL from wich download occurs
-    path: String,
-
-    /// OP
-    r: bool,
-    l: Option<u32>,
-    p: Option<String>,
+    url: String,
+    #[arg(short)]
+    recursive: bool,
+    #[arg(
+        short,
+        default_value_if("recursive", ArgPredicate::Equals(OsStr::from("true")), "5")
+    )]
+    level: Option<u32>,
+    #[arg(short, default_value=get_default_dl_path().into_os_string(), value_parser=parse_directory)]
+    path: PathBuf,
 }
 
-impl Param {
-    fn new(args: Vec<String>) -> Param {
-        for arg in args {}
-    }
-}
-
-fn check_for_option(args: Vec<String>, option: &mut (bool, u32, str)) {
-    for arg in args {
-        if arg == "-r" {
-            option.0 = true;
-        }
-        if arg == "-l" {
-            option.1 = arg + 1;
-        }
-        if arg == "-p" {
-            option.2 = true;
-        }
-    }
-}
+// create a client.
+// Make a request on the URL
 
 fn main() {
-    let param: Param = Param::new(env::args().collect());
+    let cli = Cli::parse();
+    println!("url: {}", cli.url);
+    println!(
+        "recursive: {}, level: {}",
+        cli.recursive,
+        cli.level.unwrap_or_default()
+    );
+    println!("path to save: {}", cli.path.display());
     let client = Client::new();
 }

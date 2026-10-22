@@ -5,5 +5,5 @@ edition = "2024"
 about = "Download images from a website with an URL"
 
 [dependencies]
-clap = { version = "4.6.7", features = ["derive"] }
+clap = { version = "4.6.7", features = ["derive", "string"] }
 reqwest = "0.13.5"

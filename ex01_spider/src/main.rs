@@ -30,7 +30,7 @@ fn parse_directory(value: &str) -> Result<PathBuf, String> {
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
 struct Param {
-    url: String,
+    url: String, // maybe use reqwest::Url...
     #[arg(short)]
     recursive: bool,
     #[arg(short, default_value("5"))]
@@ -115,6 +115,16 @@ async fn save_images(
     Ok(())
 }
 
+async fn scrap_image(
+    url: &reqwest::Url,
+    client: &Client,
+    path: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let response = send_request(&url.to_string(), client).await?;
+    save_images(&url.to_string(), response, path).await?;
+    Ok(())
+}
+
 async fn scan_page(
     client: &Client,
     url: &str,
@@ -154,7 +164,25 @@ async fn scan_page(
 
     let selector = Selector::parse("img[src]").unwrap();
     for element in document.select(&selector) {
-        if let Some(src) = element.value().attr("src") {}
+        if let Some(src) = element.value().attr("src") {
+            let page_url = reqwest::Url::parse(url);
+            if page_url.is_err() {
+                continue;
+            }
+            let image_url = page_url.unwrap().join(src);
+            if image_url.is_err() {
+                continue;
+            }
+            match scrap_image(&image_url.unwrap(), client, path).await {
+                Ok(_) => {
+                    discovered.insert(image_url.unwrap().to_string());
+                    println!("Image saved: {url}");
+                }
+                Err(_) => {
+                    eprintln!("Could not save image at {url}");
+                }
+            }
+        }
     }
 
     let selector = Selector::parse("a[href]").unwrap();

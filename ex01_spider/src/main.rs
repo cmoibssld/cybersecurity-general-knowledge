@@ -1,13 +1,11 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::{collections::VecDeque, fs::create_dir_all};
 
-use clap::{
-    Parser,
-    builder::{ArgPredicate, OsStr},
-};
+use clap::Parser;
 
 use reqwest::{Client, Response};
+use scraper::{Html, Selector};
 
 fn get_default_dl_path() -> PathBuf {
     PathBuf::from("./data")
@@ -44,7 +42,8 @@ struct Param {
 // My algo for spider
 
 // 1. Create a client.
-// 1.1 Create one map: queue (URL as string, searched? as bool)
+// 1.1 Create a VecDeque: queue (URL as string)
+// 1.2 Create a HashSet: history of visited/scanned url
 // 1.2 Add the param url to the queue
 //
 // 2. For each url inside the queue
@@ -66,21 +65,101 @@ async fn send_request(url: &str, client: &Client) -> Result<Response, Box<dyn st
     Ok(response)
 }
 
-fn look_for_images(response: &Response) {
-    let content_type = response.headers().get("content-type");
-    if content_type.is_none() {
-        return;
+fn look_for_images(response: &Response) -> bool {
+    let img_extension = ["jpg", "jpeg", "png", "gif", "bmp"];
+    let Some(content_type) = response
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+    else {
+        return false;
+    };
+    let media_type = content_type.split(';').next().unwrap_or("").trim();
+    if media_type
+        .strip_prefix("image/")
+        .is_some_and(|extension| img_extension.contains(&extension))
+    {
+        println!("I found an image");
+        true
+    } else {
+        println!("This is not an image");
+        false
     }
 }
 
-async fn search_page(
-    client: &Client,
-    response: &Response,
-    dwl_path: &PathBuf,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+fn get_proper_name(path: &PathBuf, file_name: &str) -> PathBuf {
+    let mut destination = path.join(&file_name);
+    let name = std::path::Path::new(&file_name);
+    let stem = name.file_stem().unwrap().to_string_lossy();
+    let extension = name.extension().unwrap().to_string_lossy();
+    let mut counter = 1;
+
+    while destination.exists() {
+        destination = path.join(format!("{stem}_{counter}.{extension}"));
+        counter += 1;
+    }
+    destination
 }
 
-fn add_new_urls(next_urls: Vec<String>, queue: &mut VecDeque<(&str, bool)>) {}
+async fn save_images(
+    url: &str,
+    response: Response,
+    path: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let body = response.error_for_status()?.bytes().await?;
+    let mut file_name = url.rsplit_once("/").unwrap().1;
+    let path = get_proper_name(path, file_name);
+    tokio::fs::write(path, &body).await?;
+
+    println!("image {file_name} correctly saved");
+    Ok(())
+}
+
+async fn scan_page(
+    client: &Client,
+    url: &str,
+    queue: &mut VecDeque<String>,
+    discovered: &mut HashSet<String>,
+    path: &PathBuf,
+) {
+    // first send the request for the whole page
+    let response = match send_request(url, client).await {
+        Ok(response) => response,
+        Err(error) => {
+            eprintln!("Failed request for {url}: {error}");
+            return;
+        }
+    };
+    discovered.insert(url.to_string());
+    if look_for_images(&response) == true {
+        match save_images(url, response, path).await {
+            Ok(_) => {
+                println!("Image saved: {url}");
+            }
+            Err(_) => {
+                eprintln!("Could not save image at {url}");
+            }
+        };
+        return;
+    }
+
+    let body = match response.text().await {
+        Ok(body) => body,
+        Err(error) => {
+            eprintln!("Failed to read response for {url}: {error}");
+            return;
+        }
+    };
+    let document = Html::parse_document(&body);
+
+    let selector = Selector::parse("img[src]").unwrap();
+    for element in document.select(&selector) {
+        if let Some(src) = element.value().attr("src") {}
+    }
+
+    let selector = Selector::parse("a[href]").unwrap();
+    for element in document.select(&selector) {}
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -90,27 +169,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("path to save: {}", param.path.display());
 
     let client = Client::new();
-    let mut queue: VecDeque<(&str, bool)> = VecDeque::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    let mut discovered: HashSet<String> = HashSet::new();
 
-    queue.push_front((&param.url, false));
+    queue.push_front(param.url);
 
     for i in 0..param.level {
         println!("Going at level {i} of depth in the website");
-        for (url, st) in queue.clone().iter_mut() {
-            if *st == true {
-                continue;
-            }
-            // don't know if the lock is permanent but I just want the iter first then to release the lock
-            let response = send_request(url, &client).await;
-            *st = true;
-            if response.is_err() {
-                eprintln!("Failed request: {}", url);
-                continue;
-            }
-            let next_urls: Vec<String> =
-                search_page(&client, &response.unwrap(), &param.path).await?;
-            add_new_urls(next_urls, &mut queue);
-            // I need the lock here to add new layer of depth to the queue
+        let round_size = queue.len();
+        for _ in 0..round_size {
+            let url = queue.pop_front().unwrap();
+            scan_page(&client, &url, &mut queue, &mut discovered, &param.path).await;
         }
         if param.recursive == false {
             break;

@@ -4,6 +4,8 @@ use std::{collections::VecDeque, fs::create_dir_all};
 
 use clap::Parser;
 
+use reqwest::header::USER_AGENT;
+use reqwest::redirect::Policy;
 use reqwest::{Client, Response};
 use scraper::{Html, Selector};
 
@@ -61,19 +63,16 @@ struct Param {
 // Because of multiple links at the same time, tokio and async seemed the best option
 
 async fn send_request(url: &str, client: &Client) -> Result<Response, Box<dyn std::error::Error>> {
-    let response = client.get(url).send().await?;
+    let response = client
+        .get(url)
+        .header(USER_AGENT, "arachnida/0.1")
+        .send()
+        .await?;
     Ok(response)
 }
 
-fn look_for_images(response: &Response) -> bool {
+fn look_for_images(content_type: &str) -> bool {
     let img_extension = ["jpg", "jpeg", "png", "gif", "bmp"];
-    let Some(content_type) = response
-        .headers()
-        .get("content-type")
-        .and_then(|value| value.to_str().ok())
-    else {
-        return false;
-    };
     let media_type = content_type.split(';').next().unwrap_or("").trim();
     if media_type
         .strip_prefix("image/")
@@ -82,7 +81,7 @@ fn look_for_images(response: &Response) -> bool {
         println!("I found an image");
         true
     } else {
-        println!("This is not an image");
+        println!("This is not an image: {content_type}");
         false
     }
 }
@@ -103,11 +102,10 @@ fn get_proper_name(path: &PathBuf, file_name: &str) -> PathBuf {
 
 async fn save_images(
     url: &str,
-    response: Response,
+    body: &str,
     path: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let body = response.error_for_status()?.bytes().await?;
-    let mut file_name = url.rsplit_once("/").unwrap().1;
+    let file_name = url.rsplit_once("/").unwrap().1;
     let path = get_proper_name(path, file_name);
     tokio::fs::write(path, &body).await?;
 
@@ -121,7 +119,8 @@ async fn scrap_image(
     path: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let response = send_request(&url.to_string(), client).await?;
-    save_images(&url.to_string(), response, path).await?;
+    let body = response.text().await?;
+    save_images(&url.to_string(), &body, path).await?;
     Ok(())
 }
 
@@ -133,6 +132,7 @@ async fn scan_page(
     path: &PathBuf,
 ) {
     // first send the request for the whole page
+    eprintln!("Scanning page {url}");
     let response = match send_request(url, client).await {
         Ok(response) => response,
         Err(error) => {
@@ -140,19 +140,17 @@ async fn scan_page(
             return;
         }
     };
+    eprintln!("Status is {}", response.status());
     discovered.insert(url.to_string());
-    if look_for_images(&response) == true {
-        match save_images(url, response, path).await {
-            Ok(_) => {
-                println!("Image saved: {url}");
-            }
-            Err(_) => {
-                eprintln!("Could not save image at {url}");
-            }
-        };
-        return;
-    }
 
+    let Some(content_type) = response
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+    else {
+        return;
+    };
+    let content_type = &content_type.to_string();
     let body = match response.text().await {
         Ok(body) => body,
         Err(error) => {
@@ -160,10 +158,25 @@ async fn scan_page(
             return;
         }
     };
-    let document = Html::parse_document(&body);
 
+    if look_for_images(content_type) == true {
+        match save_images(url, &body, path).await {
+            Ok(_) => {
+                println!("Image saved: {url}");
+            }
+            Err(_) => {
+                eprintln!("Could not save image at {url}");
+            }
+        };
+        // return;
+    }
+
+    let document = Html::parse_document(&body);
+    eprintln!("Identifying html");
+    // parse image
     let selector = Selector::parse("img[src]").unwrap();
     for element in document.select(&selector) {
+        eprintln!("Looking for img[src]");
         if let Some(src) = element.value().attr("src") {
             let page_url = reqwest::Url::parse(url);
             if page_url.is_err() {
@@ -173,9 +186,9 @@ async fn scan_page(
             if image_url.is_err() {
                 continue;
             }
-            match scrap_image(&image_url.unwrap(), client, path).await {
+            match scrap_image(image_url.as_ref().unwrap(), client, path).await {
                 Ok(_) => {
-                    discovered.insert(image_url.unwrap().to_string());
+                    discovered.insert(image_url.as_ref().unwrap().to_string());
                     println!("Image saved: {url}");
                 }
                 Err(_) => {
@@ -185,8 +198,13 @@ async fn scan_page(
         }
     }
 
+    // parse ref aka links
     let selector = Selector::parse("a[href]").unwrap();
-    for element in document.select(&selector) {}
+    for element in document.select(&selector) {
+        if let Some(link) = element.value().attr("href") {
+            queue.push_back(link.to_string());
+        }
+    }
 }
 
 #[tokio::main]
@@ -196,7 +214,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("recursive: {}, level: {}", param.recursive, param.level);
     println!("path to save: {}", param.path.display());
 
-    let client = Client::new();
+    let client = Client::builder().redirect(Policy::none()).build()?;
     let mut queue: VecDeque<String> = VecDeque::new();
     let mut discovered: HashSet<String> = HashSet::new();
 

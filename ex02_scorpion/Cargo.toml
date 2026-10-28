@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive", "string"] }
+kamadak-exif = "0.6.1"
+tokio = { version = "1.54.1", features = ["full", "macros", "rt-multi-thread"] }

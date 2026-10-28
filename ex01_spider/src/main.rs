@@ -1,4 +1,6 @@
+use core::fmt;
 use std::collections::HashSet;
+use std::fmt::write;
 use std::path::PathBuf;
 use std::{collections::VecDeque, fs::create_dir_all};
 
@@ -41,6 +43,23 @@ struct Param {
     path: PathBuf,
 }
 
+#[derive(Debug, Clone)]
+enum SpiderError {
+    HttpFailure(reqwest::StatusCode),
+    UnsupportedImage(String),
+}
+
+impl fmt::Display for SpiderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SpiderError::HttpFailure(e) => write!(f, "HTTP failure, status: {}", e),
+            SpiderError::UnsupportedImage(img) => write!(f, "Image type not supported: {img}"),
+        }
+    }
+}
+
+impl std::error::Error for SpiderError {}
+
 // My algo for spider
 
 // 1. Create a client.
@@ -71,9 +90,8 @@ async fn send_request(url: &str, client: &Client) -> Result<Response, Box<dyn st
     Ok(response)
 }
 
-fn look_for_images(content_type: &str) -> bool {
+fn look_for_images(media_type: &str) -> bool {
     let img_extension = ["jpg", "jpeg", "png", "gif", "bmp"];
-    let media_type = content_type.split(';').next().unwrap_or("").trim();
     if media_type
         .strip_prefix("image/")
         .is_some_and(|extension| img_extension.contains(&extension))
@@ -81,16 +99,22 @@ fn look_for_images(content_type: &str) -> bool {
         println!("I found an image");
         true
     } else {
-        println!("This is not an image: {content_type}");
+        println!("This is not an available type: {media_type}");
         false
     }
 }
 
-fn get_proper_name(path: &PathBuf, file_name: &str) -> PathBuf {
-    let mut destination = path.join(&file_name);
+fn get_proper_name(path: &PathBuf, file_name: &str, media_type: &str) -> PathBuf {
     let name = std::path::Path::new(&file_name);
     let stem = name.file_stem().unwrap().to_string_lossy();
-    let extension = name.extension().unwrap().to_string_lossy();
+    let extension = match name.extension() {
+        Some(ext) => ext.to_string_lossy(),
+        None => {
+            let ext = media_type.rsplit_once("/").unwrap_or(("", media_type)).1;
+            std::ffi::OsStr::new(ext).to_string_lossy()
+        }
+    };
+    let mut destination = path.join(format!("{stem}.{extension}"));
     let mut counter = 1;
 
     while destination.exists() {
@@ -102,13 +126,19 @@ fn get_proper_name(path: &PathBuf, file_name: &str) -> PathBuf {
 
 async fn save_images(
     url: &str,
-    body: &str,
+    body: &[u8],
+    content_type: &str,
     path: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let file_name = url.rsplit_once("/").unwrap().1;
-    let path = get_proper_name(path, file_name);
+    let file_name = url
+        .rsplit_once("?")
+        .unwrap_or((url, ""))
+        .0
+        .rsplit_once("/")
+        .unwrap_or(("", url))
+        .1;
+    let path = get_proper_name(path, file_name, content_type);
     tokio::fs::write(path, &body).await?;
-
     println!("image {file_name} correctly saved");
     Ok(())
 }
@@ -119,9 +149,25 @@ async fn scrap_image(
     path: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let response = send_request(&url.to_string(), client).await?;
-    let body = response.text().await?;
-    save_images(&url.to_string(), &body, path).await?;
-    Ok(())
+    if response.status().is_success() == false {
+        return Err(Box::new(SpiderError::HttpFailure(response.status())));
+    }
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        .ok_or("no content-type")?
+        .to_string();
+    let media_type = content_type.split(';').next().unwrap_or("").trim();
+    if look_for_images(&media_type) == true {
+        let body = response.bytes().await?;
+        save_images(&url.to_string(), &body, &media_type, path).await?;
+        Ok(())
+    } else {
+        Err(Box::new(SpiderError::UnsupportedImage(
+            media_type.to_string(),
+        )))
+    }
 }
 
 async fn scan_page(
@@ -132,6 +178,9 @@ async fn scan_page(
     path: &PathBuf,
 ) {
     // first send the request for the whole page
+    if discovered.contains(url) {
+        return;
+    }
     eprintln!("Scanning page {url}");
     let response = match send_request(url, client).await {
         Ok(response) => response,
@@ -142,6 +191,9 @@ async fn scan_page(
     };
     eprintln!("Status is {}", response.status());
     discovered.insert(url.to_string());
+    if response.status().is_success() == false {
+        return;
+    }
 
     let Some(content_type) = response
         .headers()
@@ -151,16 +203,17 @@ async fn scan_page(
         return;
     };
     let content_type = &content_type.to_string();
-    let body = match response.text().await {
-        Ok(body) => body,
-        Err(error) => {
-            eprintln!("Failed to read response for {url}: {error}");
-            return;
-        }
-    };
+    let media_type = content_type.split(';').next().unwrap_or("").trim();
 
-    if look_for_images(content_type) == true {
-        match save_images(url, &body, path).await {
+    if look_for_images(media_type) == true {
+        let body = match response.bytes().await {
+            Ok(body) => body,
+            Err(error) => {
+                eprintln!("Failed to read response for {url}: {error}");
+                return;
+            }
+        };
+        match save_images(url, &body, media_type, path).await {
             Ok(_) => {
                 println!("Image saved: {url}");
             }
@@ -168,8 +221,17 @@ async fn scan_page(
                 eprintln!("Could not save image at {url}");
             }
         };
-        // return;
+        return;
+    } else if media_type != "text/html" {
+        return;
     }
+    let body = match response.text().await {
+        Ok(body) => body,
+        Err(error) => {
+            eprintln!("Failed to read response for {url}: {error}");
+            return;
+        }
+    };
 
     let document = Html::parse_document(&body);
     eprintln!("Identifying html");
@@ -184,6 +246,9 @@ async fn scan_page(
             }
             let image_url = page_url.unwrap().join(src);
             if image_url.is_err() {
+                continue;
+            }
+            if discovered.contains(&image_url.as_ref().unwrap().to_string()) {
                 continue;
             }
             match scrap_image(image_url.as_ref().unwrap(), client, path).await {
@@ -202,7 +267,15 @@ async fn scan_page(
     let selector = Selector::parse("a[href]").unwrap();
     for element in document.select(&selector) {
         if let Some(link) = element.value().attr("href") {
-            queue.push_back(link.to_string());
+            let page_url = reqwest::Url::parse(url);
+            if page_url.is_err() {
+                continue;
+            }
+            let ref_url = page_url.unwrap().join(link);
+            if ref_url.is_err() {
+                continue;
+            }
+            queue.push_back(ref_url.unwrap().to_string());
         }
     }
 }
@@ -220,7 +293,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     queue.push_front(param.url);
 
-    for i in 0..param.level {
+    for i in 0..param.level + 1 {
         println!("Going at level {i} of depth in the website");
         let round_size = queue.len();
         for _ in 0..round_size {

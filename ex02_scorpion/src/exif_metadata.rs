@@ -1,6 +1,12 @@
-use io::Error;
-use std::{fmt, io, path::PathBuf};
-use tokio::sync::OwnedMappedMutexGuard;
+use errno::errno;
+use exif::{DateTime, In, Reader, Tag, Value};
+use gif::DecodeOptions;
+use std::{
+    fmt,
+    io::{BufReader, Read},
+    slice::Windows,
+};
+use tokio::io;
 
 // AI generated: shared metadata model. Collectors fill the fields they can read;
 // None means unavailable, rather than a fabricated zero or an empty string.
@@ -77,6 +83,7 @@ enum ExMeError {
     ForbiddenExtension(String),
     NoExtensionFound(String),
     OpenError(),
+    WrongBMPHeader(),
 }
 
 impl fmt::Display for ExMeError {
@@ -89,11 +96,14 @@ impl fmt::Display for ExMeError {
                     "Extension not allowed: {ext}. Must be .jpg/jpeg, .png, .gif, .bmp"
                 )
             }
-            ExMeError::OpenError(err) => write!(f, "Cannot open {err}"),
+            ExMeError::OpenError() => write!(f, "Cannot open file: {}", errno()),
             ExMeError::NoExtensionFound(name) => write!(f, "No extension identified: {name}"),
+            ExMeError::WrongBMPHeader() => write!(f, "Cannot identify bmp header"),
         }
     }
 }
+
+impl std::error::Error for ExMeError {}
 
 // first handle EXIF compatible files: .png
 
@@ -114,20 +124,118 @@ impl ExifMetadata {
         }
     }
 
-    pub fn set_extension(&mut self) -> Result<(), ExMeError> {
+    pub fn set_extension(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let valid_ext = vec!["jpg", "jpeg", "png", "gif", "bmp"];
         let Some((_, extension)) = self.file_name.rsplit_once(".") else {
-            return Err(ExMeError::NoExtensionFound(self.file_name.to_string()));
+            return Err(Box::new(ExMeError::NoExtensionFound(
+                self.file_name.to_string(),
+            )));
         };
         if valid_ext.contains(&extension) {
             self.extension = Some(extension.to_string());
             Ok(())
         } else {
-            Err(ExMeError::ForbiddenExtension(extension.to_string()))
+            Err(Box::new(ExMeError::ForbiddenExtension(
+                extension.to_string(),
+            )))
         }
     }
 
-    pub fn parse_metadata(&mut self, file_path: &PathBuf) -> Result<(), ExMeError> {
+    pub async fn parse_metadata(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.extension == Some("jpg".to_string()) {
+            self.use_exif_crate().await
+        } else if self.extension == Some("jpeg".to_string()) {
+            self.use_exif_crate().await
+        } else if self.extension == Some("png".to_string()) {
+            self.use_exif_crate().await
+        } else if self.extension == Some("gif".to_string()) {
+            self.use_gif_crate().await
+        } else if self.extension == Some("bmp".to_string()) {
+            self.use_bmp_crate().await
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn use_exif_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let file = open_file(&self.file_name).await?;
+        if let Ok(metadata) = file.metadata() {
+            self.file_size = Some(metadata.len());
+        };
+        let mut bufreader = BufReader::new(file);
+        let exifreader = Reader::new();
+        let exif = exifreader.read_from_container(&mut bufreader)?;
+        for f in exif.fields() {
+            let value = f.display_value().with_unit(&exif).to_string();
+            match f.tag {
+                Tag::DateTimeOriginal => self.captured_at = Some(value),
+                Tag::DateTime => self.created_at = Some(value),
+                Tag::ImageWidth => self.width = f.value.get_uint(0),
+                Tag::ImageLength => self.height = f.value.get_uint(0),
+                Tag::XResolution => self.x_res = rational_to_f64(&f.value),
+                Tag::YResolution => self.y_res = rational_to_f64(&f.value),
+
+                Tag::ResolutionUnit => self.res_unit = Some(value),
+                Tag::UserComment => self.user_comment = Some(value),
+                _ => {}
+            }
+        }
         Ok(())
+    }
+
+    async fn use_gif_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let file = open_file(&self.file_name).await?;
+        if let Ok(metadata) = file.metadata() {
+            self.file_size = Some(metadata.len());
+        };
+        let mut bufreader = BufReader::new(file);
+
+        let mut options = DecodeOptions::new();
+        options.set_color_output(gif::ColorOutput::Indexed);
+        let decoder = options.read_info(&mut bufreader)?;
+
+        self.width = Some(decoder.width() as u32);
+        self.height = Some(decoder.height() as u32);
+        Ok(())
+    }
+
+    async fn use_bmp_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut file = open_file(&self.file_name).await?;
+        if let Ok(metadata) = file.metadata() {
+            self.file_size = Some(metadata.len());
+        };
+
+        let mut header = [0u8; 54];
+        file.read_exact(&mut header)?;
+
+        if &header[0..2] != b"BM" {
+            return Err(Box::new(ExMeError::WrongBMPHeader()));
+        }
+
+        let width = i32::from_le_bytes(header[18..22].try_into()?);
+        let height = i32::from_le_bytes(header[22..26].try_into()?);
+        let x_ppm = i32::from_le_bytes(header[38..42].try_into()?);
+        let y_ppm = i32::from_le_bytes(header[42..46].try_into()?);
+
+        self.width = u32::try_from(width).ok();
+        self.height = height.checked_abs().and_then(|h| u32::try_from(h).ok());
+        self.x_res = (x_ppm > 0).then_some(x_ppm as f64 / 39.3701);
+        self.y_res = (y_ppm > 0).then_some(y_ppm as f64 / 39.3701);
+
+        self.res_unit = Some("DPI".into());
+
+        Ok(())
+    }
+}
+
+// Function out of exaf create
+async fn open_file(file_name: &str) -> Result<std::fs::File, Box<dyn std::error::Error>> {
+    Ok(tokio::fs::File::open(file_name).await?.into_std().await)
+}
+
+fn rational_to_f64(value: &Value) -> Option<f64> {
+    match value {
+        Value::Rational(values) => values.first().map(|r| r.num as f64 / r.denom as f64),
+        _ => None,
     }
 }

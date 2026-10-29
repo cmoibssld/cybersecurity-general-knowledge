@@ -1,12 +1,9 @@
-use errno::errno;
-use exif::{DateTime, In, Reader, Tag, Value};
+use exif::{Reader, Tag, Value};
 use gif::DecodeOptions;
 use std::{
     fmt,
     io::{BufReader, Read},
-    slice::Windows,
 };
-use tokio::io;
 
 // AI generated: shared metadata model. Collectors fill the fields they can read;
 // None means unavailable, rather than a fabricated zero or an empty string.
@@ -79,24 +76,20 @@ impl fmt::Display for ExifMetadata {
 
 #[derive(Debug, Clone)]
 enum ExMeError {
-    FileNotFound(String),
     ForbiddenExtension(String),
     NoExtensionFound(String),
-    OpenError(),
     WrongBMPHeader(),
 }
 
 impl fmt::Display for ExMeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ExMeError::FileNotFound(name) => write!(f, "File not found: {name}"),
             ExMeError::ForbiddenExtension(ext) => {
                 write!(
                     f,
                     "Extension not allowed: {ext}. Must be .jpg/jpeg, .png, .gif, .bmp"
                 )
             }
-            ExMeError::OpenError() => write!(f, "Cannot open file: {}", errno()),
             ExMeError::NoExtensionFound(name) => write!(f, "No extension identified: {name}"),
             ExMeError::WrongBMPHeader() => write!(f, "Cannot identify bmp header"),
         }

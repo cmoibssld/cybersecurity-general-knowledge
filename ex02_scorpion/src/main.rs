@@ -2,7 +2,15 @@
 use clap::Parser;
 use core::fmt;
 use exif::{Exif, Reader};
-use std::{error::Error, fs::File, io::BufReader};
+use std::{
+    error::Error,
+    fs::{File, Metadata},
+    io::BufReader,
+};
+
+use crate::exif_metadata::ExifMetadata;
+
+mod exif_metadata;
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
@@ -21,18 +29,6 @@ impl fmt::Display for ScorpionError {
         match self {
             ScorpionError::WrongExtension(file) => write!(f, "Unrecognized extension: {file}"),
         }
-    }
-}
-
-fn correct_extension(name: &str) -> Result<String, ScorpionError> {
-    let valid_ext = vec!["jpg", "jpeg", "png", "gif", "bmp"];
-    let Some((_, extension)) = name.rsplit_once(".") else {
-        return Err(ScorpionError::WrongExtension(name.to_string()));
-    };
-    if valid_ext.contains(&extension) {
-        Ok(extension.to_string())
-    } else {
-        Err(ScorpionError::WrongExtension(name.to_string()))
     }
 }
 
@@ -55,16 +51,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let param = Param::parse();
     let exif_crate_ext = vec!["jpg", "jpeg", "png"];
     for name in param.file {
-        let Ok(mut file) = open_file(&name).await else {
-            eprintln!("Error: File not found - {}", name);
+        let metadata = ExifMetadata::new(name);
+        metadata.set_extension()?;
+        let Ok(mut file) = open_file(&metadata.file_name).await else {
+            eprintln!("Error: File not found - {}", &metadata.file_name);
             continue;
         };
-        let Ok(ext) = correct_extension(&name) else {
+        let Ok(ext) = correct_extension(&metadata.file_name) else {
             continue;
         };
+
         if exif_crate_ext.contains(&ext.as_str()) {
             let Ok(exif) = read_exif_with_crate(&mut file) else {
-                eprintln!("Error: failed retreiving EXIF from {ext}: {name}");
+                eprintln!("Error: no Exif data found {ext}: {}", &metadata.file_name);
                 continue;
             };
             for f in exif.fields() {
@@ -77,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        println!("extension: {ext}");
+        println!("{}\n {}", metadata.file_name, metadata);
     }
 
     Ok(())

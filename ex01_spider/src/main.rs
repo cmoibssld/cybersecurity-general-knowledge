@@ -73,21 +73,23 @@ async fn send_request(url: Url, client: &Client) -> Result<Response, Box<dyn std
         .header(USER_AGENT, "arachnida/0.1")
         .send()
         .await?;
-    Ok(response)
+    if !response.status().is_success() && !response.status().is_redirection() {
+        Err(Box::new(SpiderError::HttpFailure(response.status())))
+    } else {
+        Ok(response)
+    }
 }
 
 fn is_an_image(media_type: &str) -> bool {
     let img_extension = ["jpg", "jpeg", "png", "gif", "bmp"];
-    if media_type
+    media_type
         .strip_prefix("image/")
         .is_some_and(|extension| img_extension.contains(&extension))
-    {
-        println!("I found an image");
-        true
-    } else {
-        println!("This is not an available type: {media_type}");
-        false
-    }
+}
+
+fn print_page_summary(url: &Url, downloaded_images: usize) {
+    let suffix = if downloaded_images == 1 { "" } else { "s" };
+    println!("{url}: {downloaded_images} image{suffix} downloaded");
 }
 
 fn unique_image_path(path: &PathBuf, file_name: &str, media_type: &str) -> PathBuf {
@@ -125,7 +127,6 @@ async fn save_image(
         .1;
     let path = unique_image_path(path, file_name, content_type);
     tokio::fs::write(path, &body).await?;
-    println!("image {file_name} correctly saved");
     Ok(())
 }
 
@@ -156,24 +157,52 @@ async fn download_image(
     }
 }
 
+struct PageLinks {
+    images: Vec<Url>,
+    pages: Vec<Url>,
+}
+
+fn extract_links(documents: &Html, base: &Url) -> PageLinks {
+    let mut result = PageLinks {
+        images: Vec::new(),
+        pages: Vec::new(),
+    };
+    let selector = Selector::parse("img[src]").unwrap();
+    for element in documents.select(&selector) {
+        if let Some(src) = element.value().attr("src") {
+            let Ok(image_url) = base.join(src) else {
+                continue;
+            };
+            result.images.push(image_url);
+        }
+
+        let selector = Selector::parse("a[href]").unwrap();
+        for element in documents.select(&selector) {
+            if let Some(src) = element.value().attr("ref") {
+                let Ok(ref_url) = base.join(src) else {
+                    continue;
+                };
+                result.pages.push(ref_url);
+            }
+        }
+    }
+    result
+}
+
 async fn scan_page(
     client: &Client,
     url: &Url,
+    page_origin: &url::Origin,
     queue: &mut VecDeque<Url>,
     discovered: &mut HashSet<Url>,
     path: &PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<usize, Box<dyn std::error::Error>> {
     // first send the request for the whole page
     if discovered.contains(url) {
         return Err(Box::new(SpiderError::SearchedAlready(url.to_string())));
     }
-    eprintln!("Scanning page {url}");
     let response = send_request(url.clone(), client).await?;
-    eprintln!("Status is {}", response.status());
     discovered.insert(url.clone());
-    if response.status().is_success() == false {
-        return Err(Box::new(SpiderError::HttpFailure(response.status())));
-    }
 
     let Some(content_type) = response
         .headers()
@@ -188,69 +217,68 @@ async fn scan_page(
     if is_an_image(media_type) == true {
         let body = response.bytes().await?;
         save_image(url.as_str(), &body, media_type, path).await?;
-        println!("Image saved: {url}");
-        return Ok(());
+        return Ok(1);
     } else if media_type != "text/html" {
         return Err(Box::new(SpiderError::UselessContent()));
     }
     let body = response.text().await?;
     let document = Html::parse_document(&body);
-    eprintln!("Identifying html");
+
+    let links = extract_links(&document, url);
+
+    let mut downloaded_images = 0;
     // parse image
-    let selector = Selector::parse("img[src]").unwrap();
-    for element in document.select(&selector) {
-        eprintln!("Looking for img[src]");
-        if let Some(src) = element.value().attr("src") {
-            let Ok(image_url) = url.join(src) else {
-                continue;
-            };
-            if discovered.contains(&image_url) {
-                continue;
-            }
-            if let Err(e) = download_image(&image_url, client, path).await {
-                eprint!("{e}");
-                continue;
-            }
-            discovered.insert(image_url);
-            println!("Image saved: {url}");
+    for image in links.images {
+        if discovered.contains(&image) {
+            continue;
         }
+        if let Err(error) = download_image(&image, client, path).await {
+            eprintln!("Failed to download {image}: {error}");
+            continue;
+        }
+        discovered.insert(image);
+        downloaded_images += 1;
     }
 
     // parse ref aka links
-    let selector = Selector::parse("a[href]").unwrap();
-    for element in document.select(&selector) {
-        if let Some(link) = element.value().attr("href") {
-            let Ok(ref_url) = url.join(link) else {
-                continue;
-            };
-            queue.push_back(ref_url);
+    for ref_page in links.pages {
+        if &ref_page.origin() != page_origin {
+            continue;
+        }
+        if !discovered.contains(&ref_page) {
+            queue.push_back(ref_page);
         }
     }
-    Ok(())
+    Ok(downloaded_images)
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let param = Param::parse();
-    println!("url: {}", param.url);
-    println!("recursive: {}, level: {}", param.recursive, param.level);
-    println!("path to save: {}", param.path.display());
 
-    let client = Client::builder().redirect(Policy::none()).build()?;
+    let client = Client::builder().redirect(Policy::limited(3)).build()?;
     let mut queue: VecDeque<Url> = VecDeque::new();
     let mut discovered: HashSet<Url> = HashSet::new();
 
     queue.push_front(Url::parse(&param.url)?);
 
-    for i in 0..param.level + 1 {
-        println!("Going at level {i} of depth in the website");
+    let page_origin = queue[0].origin();
+    for _ in 0..param.level + 1 {
         let round_size = queue.len();
         for _ in 0..round_size {
             let url = queue.pop_front().unwrap();
-            if let Err(error) =
-                scan_page(&client, &url, &mut queue, &mut discovered, &param.path).await
+            match scan_page(
+                &client,
+                &url,
+                &page_origin,
+                &mut queue,
+                &mut discovered,
+                &param.path,
+            )
+            .await
             {
-                eprintln!("Failed to process {url}: {error}");
+                Ok(downloaded_images) => print_page_summary(&url, downloaded_images),
+                Err(error) => eprintln!("Failed to process {url}: {error}"),
             }
         }
         if param.recursive == false {

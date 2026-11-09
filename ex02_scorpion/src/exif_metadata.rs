@@ -5,28 +5,23 @@ use std::{
     io::{BufReader, Read},
 };
 
-// AI generated: shared metadata model. Collectors fill the fields they can read;
 // None means unavailable, rather than a fabricated zero or an empty string.
 #[derive(Debug, Default)]
 pub struct ExifMetadata {
     pub file_name: String,
     pub extension: Option<String>,
     pub file_size: Option<u64>,
-    // AI generated: dates are display-ready strings supplied by the collector.
     // Filesystem creation time and the photo capture time are separate values.
     pub created_at: Option<String>,
     pub captured_at: Option<String>,
     pub width: Option<u32>,
     pub height: Option<u32>,
-    // AI generated: resolution may be fractional; its unit is stored separately.
     pub x_res: Option<f64>,
     pub y_res: Option<f64>,
     pub res_unit: Option<String>,
     pub user_comment: Option<String>,
 }
 
-// AI generated: render aligned ExifTool-style rows and propagate write errors.
-// Multiline comments receive indented continuation lines.
 fn write_row(f: &mut fmt::Formatter<'_>, label: &str, value: impl fmt::Display) -> fmt::Result {
     let value = value.to_string();
     let mut lines = value.lines();
@@ -37,7 +32,6 @@ fn write_row(f: &mut fmt::Formatter<'_>, label: &str, value: impl fmt::Display) 
     Ok(())
 }
 
-// AI generated: consistent handling of missing metadata across image formats.
 fn write_optional<T: fmt::Display>(
     f: &mut fmt::Formatter<'_>,
     label: &str,
@@ -49,7 +43,6 @@ fn write_optional<T: fmt::Display>(
     }
 }
 
-// AI generated: formatting only; file access and metadata extraction belong
 // to the collectors. This allows the same display for JPEG, PNG, GIF and BMP.
 impl fmt::Display for ExifMetadata {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -71,8 +64,6 @@ impl fmt::Display for ExifMetadata {
         Ok(())
     }
 }
-
-// NOT AI Generated, my own work
 
 #[derive(Debug, Clone)]
 enum ExMeError {
@@ -99,7 +90,6 @@ impl fmt::Display for ExMeError {
 impl std::error::Error for ExMeError {}
 
 // first handle EXIF compatible files: .png
-
 impl ExifMetadata {
     pub fn new(file_name: String) -> Self {
         ExifMetadata {

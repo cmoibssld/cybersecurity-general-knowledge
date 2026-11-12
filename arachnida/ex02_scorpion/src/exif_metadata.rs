@@ -1,3 +1,4 @@
+use bmp_rust::bmp::BMP;
 use chrono::{DateTime, Local};
 use exif::{Reader, Tag, Value};
 use gif::DecodeOptions;
@@ -274,30 +275,37 @@ impl ExifMetadata {
     }
 
     fn use_bmp_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut file = open_file(&self.file_name)?;
-        if let Ok(metadata) = file.metadata() {
-            self.file_size = Some(metadata.len());
-        };
+        // let mut file = open_file(&self.file_name)?;
+        // if let Ok(metadata) = file.metadata() {
+        //     self.file_size = Some(metadata.len());
+        // };
 
-        let mut header = [0u8; 54];
-        file.read_exact(&mut header)?;
+        // let mut header = [0u8; 54];
+        // file.read_exact(&mut header)?;
 
-        if &header[0..2] != b"BM" {
-            return Err(Box::new(ExMeError::WrongBMPHeader()));
-        }
+        // if &header[0..2] != b"BM" {
+        //     return Err(Box::new(ExMeError::WrongBMPHeader()));
+        // }
 
-        let width = i32::from_le_bytes(header[18..22].try_into()?);
-        let height = i32::from_le_bytes(header[22..26].try_into()?);
-        let x_ppm = i32::from_le_bytes(header[38..42].try_into()?);
-        let y_ppm = i32::from_le_bytes(header[42..46].try_into()?);
+        // let width = i32::from_le_bytes(header[18..22].try_into()?);
+        // let height = i32::from_le_bytes(header[22..26].try_into()?);
+        // let x_ppm = i32::from_le_bytes(header[38..42].try_into()?);
+        // let y_ppm = i32::from_le_bytes(header[42..46].try_into()?);
 
-        self.width = u32::try_from(width).ok();
-        self.height = height.checked_abs().and_then(|h| u32::try_from(h).ok());
-        self.x_res = (x_ppm > 0).then_some(x_ppm as f64 / 39.3701);
-        self.y_res = (y_ppm > 0).then_some(y_ppm as f64 / 39.3701);
+        // self.width = u32::try_from(width).ok();
+        // self.height = height.checked_abs().and_then(|h| u32::try_from(h).ok());
+        // self.x_res = (x_ppm > 0).then_some(x_ppm as f64 / 39.3701);
+        // self.y_res = (y_ppm > 0).then_some(y_ppm as f64 / 39.3701);
 
-        self.res_unit = Some("DPI".into());
+        // self.res_unit = Some("DPI".into());
 
+        let mut bmp_from_file =
+            BMP::new_from_file(&self.file_name).map_err(|_| Box::new(ExMeError::WrongBMPHeader()));
+        let file_size = bmp_from_file.get_size(true);
+        let dib_header = bmp_from_file.get_dib_header().unwrap();
+        let width = dib_header.width;
+        let height = dib_header.height;
+        let pixel_color = bmp_from_file.get_color_of_px(10, 10).unwrap();
         Ok(())
     }
 }

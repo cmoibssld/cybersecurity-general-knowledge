@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("scorpion: {}: {e}", metadata.file_name);
             continue;
         }
-        println!("{}\n {}", metadata.file_name, metadata);
+        println!("{}\n{}", metadata.file_name, metadata);
     }
     Ok(())
 }

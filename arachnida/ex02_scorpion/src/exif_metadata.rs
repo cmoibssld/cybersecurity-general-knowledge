@@ -2,18 +2,18 @@ use bmp_rust::bmp::BMP;
 use chrono::{DateTime, Local};
 use exif::{Reader, Tag, Value};
 use gif::DecodeOptions;
+use metadata::MediaFileMetadata;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
-use std::{
-    fmt,
-    io::{BufReader, Read},
-};
+use std::{fmt, io::BufReader};
 
 // None means unavailable, rather than a fabricated zero or an empty string.
 #[derive(Debug, Default)]
 pub struct ExifMetadata {
+    pub path: String,
     pub file_name: String,
     pub extension: Option<String>,
+    pub metadata: MediaFileMetadata,
     pub file_size: Option<u64>,
     // Filesystem creation time and the photo capture time are separate values.
     pub created_at: Option<String>,
@@ -53,6 +53,7 @@ fn write_optional<T: fmt::Display>(
 impl fmt::Display for ExifMetadata {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write_row(f, "File Name", &self.file_name)?;
+        write_row(f, "File path", &self.path)?;
         write_optional(f, "File Extension", &self.extension)?;
         write_optional(
             f,
@@ -82,6 +83,7 @@ enum ExMeError {
     ForbiddenExtension(String),
     NoExtensionFound(String),
     WrongBMPHeader(),
+    NoDibHeader(),
 }
 
 impl fmt::Display for ExMeError {
@@ -95,18 +97,20 @@ impl fmt::Display for ExMeError {
             }
             ExMeError::NoExtensionFound(name) => write!(f, "No extension identified: {name}"),
             ExMeError::WrongBMPHeader() => write!(f, "Cannot identify bmp header"),
+            ExMeError::NoDibHeader() => write!(f, "Cannot find DIB header"),
         }
     }
 }
 
 impl std::error::Error for ExMeError {}
 
-// first handle EXIF compatible files: .png
 impl ExifMetadata {
-    pub fn new(file_name: String) -> Self {
+    pub fn new(path: String) -> Self {
         ExifMetadata {
-            file_name,
+            path,
+            file_name: String::new(),
             extension: None,
+            metadata: MediaFileMetadata::new(path),
             file_size: None,
             created_at: None,
             captured_at: None,
@@ -123,6 +127,11 @@ impl ExifMetadata {
 
     pub fn set_extension(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let valid_ext = vec!["jpg", "jpeg", "png", "gif", "bmp"];
+        let (_, file_name) = self
+            .path
+            .rsplit_once("/")
+            .unwrap_or(("", self.path.as_str()));
+        self.file_name = String::from(file_name);
         let Some((_, extension)) = self.file_name.rsplit_once(".") else {
             return Err(Box::new(ExMeError::NoExtensionFound(
                 self.file_name.to_string(),
@@ -156,7 +165,7 @@ impl ExifMetadata {
     }
 
     fn collect_filesystem_metadata(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let metadata = std::fs::metadata(&self.file_name)?;
+        let metadata = std::fs::metadata(&self.path)?;
         self.file_size = Some(metadata.len());
         for (label, time) in [
             ("File Modification Date/Time", metadata.modified()),
@@ -191,7 +200,7 @@ impl ExifMetadata {
     }
 
     fn use_exif_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let file = open_file(&self.file_name)?;
+        let file = open_file(&self.path)?;
         if let Ok(metadata) = file.metadata() {
             self.file_size = Some(metadata.len());
         };
@@ -217,7 +226,7 @@ impl ExifMetadata {
     }
 
     fn use_gif_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let file = open_file(&self.file_name)?;
+        let file = open_file(&self.path)?;
         if let Ok(metadata) = file.metadata() {
             self.file_size = Some(metadata.len());
         };
@@ -299,13 +308,14 @@ impl ExifMetadata {
 
         // self.res_unit = Some("DPI".into());
 
-        let mut bmp_from_file =
-            BMP::new_from_file(&self.file_name).map_err(|_| Box::new(ExMeError::WrongBMPHeader()));
-        let file_size = bmp_from_file.get_size(true);
-        let dib_header = bmp_from_file.get_dib_header().unwrap();
-        let width = dib_header.width;
-        let height = dib_header.height;
-        let pixel_color = bmp_from_file.get_color_of_px(10, 10).unwrap();
+        let bmp_from_file =
+            BMP::new_from_file(&self.path).map_err(|_| Box::new(ExMeError::WrongBMPHeader()))?;
+        self.file_size = Some(bmp_from_file.get_size(true) as u64);
+        let dib_header = bmp_from_file
+            .get_dib_header()
+            .map_err(|_| Box::new(ExMeError::NoDibHeader()))?;
+        self.width = Some(dib_header.width);
+        self.height = Some(dib_header.height as u32);
         Ok(())
     }
 }

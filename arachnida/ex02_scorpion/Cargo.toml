@@ -10,3 +10,4 @@ clap = { version = "4.6.7", features = ["derive", "string"] }
 errno = "0.3.14"
 gif = "0.14.2"
 kamadak-exif = "0.6.1"
+metadata = "0.1.13"

@@ -12,13 +12,12 @@ struct Param {
     file: Vec<String>,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let param = Param::parse();
     for name in param.file {
         let mut metadata = ExifMetadata::new(name);
         metadata.set_extension()?;
-        if let Err(e) = metadata.parse_metadata().await {
+        if let Err(e) = metadata.parse_metadata() {
             eprintln!("scorpion: {}: {e}", metadata.file_name);
             continue;
         }

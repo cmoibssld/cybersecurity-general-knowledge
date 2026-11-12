@@ -137,18 +137,18 @@ impl ExifMetadata {
         }
     }
 
-    pub async fn parse_metadata(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn parse_metadata(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.collect_filesystem_metadata()?;
         if self.extension == Some("jpg".to_string()) {
-            self.use_exif_crate().await
+            self.use_exif_crate()
         } else if self.extension == Some("jpeg".to_string()) {
-            self.use_exif_crate().await
+            self.use_exif_crate()
         } else if self.extension == Some("png".to_string()) {
-            self.use_exif_crate().await
+            self.use_exif_crate()
         } else if self.extension == Some("gif".to_string()) {
-            self.use_gif_crate().await
+            self.use_gif_crate()
         } else if self.extension == Some("bmp".to_string()) {
-            self.use_bmp_crate().await
+            self.use_bmp_crate()
         } else {
             Ok(())
         }
@@ -189,8 +189,8 @@ impl ExifMetadata {
         Ok(())
     }
 
-    async fn use_exif_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let file = open_file(&self.file_name).await?;
+    fn use_exif_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let file = open_file(&self.file_name)?;
         if let Ok(metadata) = file.metadata() {
             self.file_size = Some(metadata.len());
         };
@@ -215,8 +215,8 @@ impl ExifMetadata {
         Ok(())
     }
 
-    async fn use_gif_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let file = open_file(&self.file_name).await?;
+    fn use_gif_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let file = open_file(&self.file_name)?;
         if let Ok(metadata) = file.metadata() {
             self.file_size = Some(metadata.len());
         };
@@ -273,8 +273,8 @@ impl ExifMetadata {
         Ok(())
     }
 
-    async fn use_bmp_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut file = open_file(&self.file_name).await?;
+    fn use_bmp_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut file = open_file(&self.file_name)?;
         if let Ok(metadata) = file.metadata() {
             self.file_size = Some(metadata.len());
         };
@@ -303,8 +303,8 @@ impl ExifMetadata {
 }
 
 // Function out of exaf create
-async fn open_file(file_name: &str) -> Result<std::fs::File, Box<dyn std::error::Error>> {
-    Ok(tokio::fs::File::open(file_name).await?.into_std().await)
+fn open_file(file_name: &str) -> Result<std::fs::File, Box<dyn std::error::Error>> {
+    Ok(std::fs::File::open(file_name)?)
 }
 
 fn rational_to_f64(value: &Value) -> Option<f64> {

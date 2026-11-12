@@ -29,6 +29,7 @@ init:
 clean:
 	$(CARGO) clean
 	rm -rf ./spider
+	rm -rd ./data
 
 re: clean all
 

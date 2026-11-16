@@ -2,7 +2,7 @@ use bmp_rust::bmp::BMP;
 use chrono::{DateTime, Local};
 use exif::{Reader, Tag, Value};
 use gif::DecodeOptions;
-use metadata::MediaFileMetadata;
+use infer;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::{fmt, io::BufReader};
@@ -13,10 +13,10 @@ pub struct ExifMetadata {
     pub path: String,
     pub file_name: String,
     pub extension: Option<String>,
-    pub metadata: MediaFileMetadata,
     pub file_size: Option<u64>,
     // Filesystem creation time and the photo capture time are separate values.
-    pub created_at: Option<String>,
+    pub creation_date: Option<String>,
+    pub changed_last_time: Option<String>,
     pub captured_at: Option<String>,
     pub width: Option<u32>,
     pub height: Option<u32>,
@@ -63,7 +63,7 @@ impl fmt::Display for ExifMetadata {
         for (tag, value) in &self.sys_metadata {
             write_row(f, tag, value)?;
         }
-        write_optional(f, "File Creation Date", &self.created_at)?;
+        write_optional(f, "File last change Date", &self.changed_last_time)?;
         write_optional(f, "Photo Capture Date", &self.captured_at)?;
         write_optional(f, "Image Width", &self.width)?;
         write_optional(f, "Image Height", &self.height)?;
@@ -81,7 +81,7 @@ impl fmt::Display for ExifMetadata {
 #[derive(Debug, Clone)]
 enum ExMeError {
     ForbiddenExtension(String),
-    NoExtensionFound(String),
+    NoExtensionFound(),
     WrongBMPHeader(),
     NoDibHeader(),
 }
@@ -95,7 +95,7 @@ impl fmt::Display for ExMeError {
                     "Extension not allowed: {ext}. Must be .jpg/jpeg, .png, .gif, .bmp"
                 )
             }
-            ExMeError::NoExtensionFound(name) => write!(f, "No extension identified: {name}"),
+            ExMeError::NoExtensionFound() => write!(f, "No extension identified"),
             ExMeError::WrongBMPHeader() => write!(f, "Cannot identify bmp header"),
             ExMeError::NoDibHeader() => write!(f, "Cannot find DIB header"),
         }
@@ -110,9 +110,9 @@ impl ExifMetadata {
             path,
             file_name: String::new(),
             extension: None,
-            metadata: MediaFileMetadata::new(path),
             file_size: None,
-            created_at: None,
+            creation_date: None,
+            changed_last_time: None,
             captured_at: None,
             width: None,
             height: None,
@@ -126,32 +126,30 @@ impl ExifMetadata {
     }
 
     pub fn set_extension(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let valid_ext = vec!["jpg", "jpeg", "png", "gif", "bmp"];
         let (_, file_name) = self
             .path
             .rsplit_once("/")
             .unwrap_or(("", self.path.as_str()));
         self.file_name = String::from(file_name);
-        let Some((_, extension)) = self.file_name.rsplit_once(".") else {
-            return Err(Box::new(ExMeError::NoExtensionFound(
-                self.file_name.to_string(),
-            )));
-        };
-        if valid_ext.contains(&extension) {
-            self.extension = Some(extension.to_string());
-            Ok(())
+        let valid_ext = vec!["jpg", "jpeg", "png", "gif", "bmp"];
+        let kind = infer::get_from_path(self.path.clone())?;
+        if let Some(kind) = kind {
+            if valid_ext.contains(&kind.extension()) {
+                self.extension = Some(String::from(kind.extension()));
+                return Ok(());
+            } else {
+                Err(Box::new(ExMeError::ForbiddenExtension(
+                    self.file_name.to_string(),
+                )))
+            }
         } else {
-            Err(Box::new(ExMeError::ForbiddenExtension(
-                extension.to_string(),
-            )))
+            Err(Box::new(ExMeError::NoExtensionFound()))
         }
     }
 
     pub fn parse_metadata(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.collect_filesystem_metadata()?;
         if self.extension == Some("jpg".to_string()) {
-            self.use_exif_crate()
-        } else if self.extension == Some("jpeg".to_string()) {
             self.use_exif_crate()
         } else if self.extension == Some("png".to_string()) {
             self.use_exif_crate()
@@ -167,6 +165,8 @@ impl ExifMetadata {
     fn collect_filesystem_metadata(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let metadata = std::fs::metadata(&self.path)?;
         self.file_size = Some(metadata.len());
+        self.creation_date = Some(metadata.created())?;
+
         for (label, time) in [
             ("File Modification Date/Time", metadata.modified()),
             ("File Access Date/Time", metadata.accessed()),
@@ -206,12 +206,18 @@ impl ExifMetadata {
         };
         let mut bufreader = BufReader::new(file);
         let exifreader = Reader::new();
-        let exif = exifreader.read_from_container(&mut bufreader)?;
+        // EXIF is optional in both JPEG and PNG: a valid image without it is not an
+        // error, its EXIF fields are simply shown as "Unavailable".
+        let exif = match exifreader.read_from_container(&mut bufreader) {
+            Ok(exif) => exif,
+            Err(exif::Error::NotFound(_)) => return Ok(()),
+            Err(e) => return Err(Box::new(e)),
+        };
         for f in exif.fields() {
             let value = f.display_value().with_unit(&exif).to_string();
             match f.tag {
                 Tag::DateTimeOriginal => self.captured_at = Some(value),
-                Tag::DateTime => self.created_at = Some(value),
+                Tag::DateTime => self.changed_last_time = Some(value),
                 Tag::ImageWidth => self.width = f.value.get_uint(0),
                 Tag::ImageLength => self.height = f.value.get_uint(0),
                 Tag::XResolution => self.x_res = rational_to_f64(&f.value),
@@ -284,30 +290,6 @@ impl ExifMetadata {
     }
 
     fn use_bmp_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // let mut file = open_file(&self.file_name)?;
-        // if let Ok(metadata) = file.metadata() {
-        //     self.file_size = Some(metadata.len());
-        // };
-
-        // let mut header = [0u8; 54];
-        // file.read_exact(&mut header)?;
-
-        // if &header[0..2] != b"BM" {
-        //     return Err(Box::new(ExMeError::WrongBMPHeader()));
-        // }
-
-        // let width = i32::from_le_bytes(header[18..22].try_into()?);
-        // let height = i32::from_le_bytes(header[22..26].try_into()?);
-        // let x_ppm = i32::from_le_bytes(header[38..42].try_into()?);
-        // let y_ppm = i32::from_le_bytes(header[42..46].try_into()?);
-
-        // self.width = u32::try_from(width).ok();
-        // self.height = height.checked_abs().and_then(|h| u32::try_from(h).ok());
-        // self.x_res = (x_ppm > 0).then_some(x_ppm as f64 / 39.3701);
-        // self.y_res = (y_ppm > 0).then_some(y_ppm as f64 / 39.3701);
-
-        // self.res_unit = Some("DPI".into());
-
         let bmp_from_file =
             BMP::new_from_file(&self.path).map_err(|_| Box::new(ExMeError::WrongBMPHeader()))?;
         self.file_size = Some(bmp_from_file.get_size(true) as u64);

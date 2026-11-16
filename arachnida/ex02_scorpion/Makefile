@@ -1,6 +1,6 @@
 # Keep Rust off the main filesystem. The exported variables also make the
 # locally installed toolchain available to cargo in every recipe.
-GOINFRE_DIR ?= /goinfre/$(USER)
+GOINFRE_DIR ?= /tmp/goinfre/$(USER)
 CARGO_HOME = $(GOINFRE_DIR)/.cargo
 RUSTUP_HOME = $(GOINFRE_DIR)/.rustup
 CARGO := $(CARGO_HOME)/bin/cargo
@@ -13,7 +13,7 @@ export RUSTUP_HOME
 export PATH := $(CARGO_HOME)/bin:$(PATH)
 
 all: init
-	$(CARGO) +$(RUST_VERSION) build --release
+	$(CARGO) +$(RUST_VERSION) build --release --locked
 	ln -f ./target/release/scorpion ./scorpion
 
 init:
@@ -28,7 +28,9 @@ init:
 		curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$$install_script"; \
 		sh "$$install_script" -y --default-toolchain none --profile minimal; \
 	fi
-	$(RUSTUP) toolchain install $(RUST_VERSION) --profile minimal
+	@if ! $(RUSTUP) run $(RUST_VERSION) rustc --version >/dev/null 2>&1; then \
+		$(RUSTUP) toolchain install $(RUST_VERSION) --profile minimal; \
+	fi
 
 clean:
 	$(CARGO) clean

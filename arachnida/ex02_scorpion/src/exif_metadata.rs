@@ -1,5 +1,5 @@
 use bmp_rust::bmp::BMP;
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, Utc};
 use exif::{Reader, Tag, Value};
 use gif::DecodeOptions;
 use infer;
@@ -54,6 +54,7 @@ impl fmt::Display for ExifMetadata {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write_row(f, "File Name", &self.file_name)?;
         write_row(f, "File path", &self.path)?;
+        write_optional(f, "Creation date", &self.creation_date)?;
         write_optional(f, "File Extension", &self.extension)?;
         write_optional(
             f,
@@ -165,7 +166,9 @@ impl ExifMetadata {
     fn collect_filesystem_metadata(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let metadata = std::fs::metadata(&self.path)?;
         self.file_size = Some(metadata.len());
-        self.creation_date = Some(metadata.created())?;
+        let creation_time = metadata.created()?;
+        let readable_format: DateTime<Utc> = creation_time.into();
+        self.creation_date = Some(format!("{}", readable_format.format("%d/%m/%Y %T")));
 
         for (label, time) in [
             ("File Modification Date/Time", metadata.modified()),

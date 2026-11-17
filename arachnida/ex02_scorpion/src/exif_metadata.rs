@@ -5,7 +5,10 @@ use gif::DecodeOptions;
 use infer;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
-use std::{fmt, io::BufReader};
+use std::{
+    fmt,
+    io::{BufReader, Read},
+};
 
 // None means unavailable, rather than a fabricated zero or an empty string.
 #[derive(Debug, Default)]
@@ -85,6 +88,8 @@ enum ExMeError {
     NoExtensionFound(),
     WrongBMPHeader(),
     NoDibHeader(),
+    WrongPNGHeader(),
+    NoIhdrHeader(),
 }
 
 impl fmt::Display for ExMeError {
@@ -99,6 +104,8 @@ impl fmt::Display for ExMeError {
             ExMeError::NoExtensionFound() => write!(f, "No extension identified"),
             ExMeError::WrongBMPHeader() => write!(f, "Cannot identify bmp header"),
             ExMeError::NoDibHeader() => write!(f, "Cannot find DIB header"),
+            ExMeError::WrongPNGHeader() => write!(f, "Cannot identify png header"),
+            ExMeError::NoIhdrHeader() => write!(f, "Cannot find IHDR header"),
         }
     }
 }
@@ -153,6 +160,7 @@ impl ExifMetadata {
         if self.extension == Some("jpg".to_string()) {
             self.use_exif_crate()
         } else if self.extension == Some("png".to_string()) {
+            self.use_png_crate()?;
             self.use_exif_crate()
         } else if self.extension == Some("gif".to_string()) {
             self.use_gif_crate()
@@ -231,6 +239,57 @@ impl ExifMetadata {
                 _ => self.extra_fields.push((f.tag.to_string(), value)),
             }
         }
+        Ok(())
+    }
+
+    fn use_png_crate(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        const PNG_SIGNATURE: [u8; 8] = *b"\x89PNG\r\n\x1a\n";
+
+        let mut file = open_file(&self.path)?;
+        let mut signature = [0; 8];
+        file.read_exact(&mut signature)?;
+        if signature != PNG_SIGNATURE {
+            return Err(Box::new(ExMeError::WrongPNGHeader()));
+        }
+
+        let mut chunk_length = [0; 4];
+        let mut chunk_type = [0; 4];
+        file.read_exact(&mut chunk_length)?;
+        file.read_exact(&mut chunk_type)?;
+        if &chunk_type != b"IHDR" {
+            return Err(Box::new(ExMeError::NoIhdrHeader()));
+        }
+        if u32::from_be_bytes(chunk_length) != 13 {
+            return Err(Box::new(ExMeError::NoIhdrHeader()));
+        }
+
+        let mut ihdr = [0; 13];
+        file.read_exact(&mut ihdr)?;
+        self.width = Some(u32::from_be_bytes(ihdr[0..4].try_into()?));
+        self.height = Some(u32::from_be_bytes(ihdr[4..8].try_into()?));
+        self.extra_fields
+            .push(("Bit Depth".into(), ihdr[8].to_string()));
+        self.extra_fields.push((
+            "Color Type".into(),
+            match ihdr[9] {
+                0 => "Grayscale",
+                2 => "Truecolor",
+                3 => "Indexed-color",
+                4 => "Grayscale with alpha",
+                6 => "Truecolor with alpha",
+                _ => "Unknown",
+            }
+            .into(),
+        ));
+        self.extra_fields.push((
+            "Interlace Method".into(),
+            match ihdr[12] {
+                0 => "None",
+                1 => "Adam7",
+                _ => "Unknown",
+            }
+            .into(),
+        ));
         Ok(())
     }
 

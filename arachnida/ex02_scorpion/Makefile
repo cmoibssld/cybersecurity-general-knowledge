@@ -1,6 +1,6 @@
 # Keep Rust off the main filesystem. The exported variables also make the
 # locally installed toolchain available to cargo in every recipe.
-GOINFRE_DIR ?= /tmp/goinfre/$(USER)
+GOINFRE_DIR ?= /tmp/arachnida/$(USER)
 CARGO_HOME = $(GOINFRE_DIR)/.cargo
 RUSTUP_HOME = $(GOINFRE_DIR)/.rustup
 CARGO := $(CARGO_HOME)/bin/cargo

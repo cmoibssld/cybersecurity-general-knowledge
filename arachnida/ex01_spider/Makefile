@@ -4,14 +4,17 @@ GOINFRE_DIR ?= /goinfre/$(USER)
 CARGO_HOME = $(GOINFRE_DIR)/.cargo
 RUSTUP_HOME = $(GOINFRE_DIR)/.rustup
 CARGO := $(CARGO_HOME)/bin/cargo
+CARGO_TARGET_DIR = $(GOINFRE_DIR)/spider/target
 
 export CARGO_HOME
 export RUSTUP_HOME
+export CARGO_TARGET_DIR
 export PATH := $(CARGO_HOME)/bin:$(PATH)
 
 all: init
+	mkdir -p $(CARGO_TARGET_DIR)
 	$(CARGO) build --release
-	ln -f ./target/release/spider ./spider
+	cp $(CARGO_TARGET_DIR)/release/spider ./spider
 
 init:
 	@if [ -x "$(CARGO)" ] && [ -x "$(CARGO_HOME)/bin/rustc" ]; then \

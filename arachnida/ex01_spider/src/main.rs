@@ -167,23 +167,23 @@ fn extract_links(documents: &Html, base: &Url) -> PageLinks {
         images: Vec::new(),
         pages: Vec::new(),
     };
-    let selector = Selector::parse("img[src]").unwrap();
-    for element in documents.select(&selector) {
+    let image_selector = Selector::parse("img[src]").unwrap();
+    for element in documents.select(&image_selector) {
         if let Some(src) = element.value().attr("src") {
             let Ok(image_url) = base.join(src) else {
                 continue;
             };
             result.images.push(image_url);
         }
+    }
 
-        let selector = Selector::parse("a[href]").unwrap();
-        for element in documents.select(&selector) {
-            if let Some(src) = element.value().attr("ref") {
-                let Ok(ref_url) = base.join(src) else {
-                    continue;
-                };
-                result.pages.push(ref_url);
-            }
+    let page_selector = Selector::parse("a[href]").unwrap();
+    for element in documents.select(&page_selector) {
+        if let Some(src) = element.value().attr("href") {
+            let Ok(ref_url) = base.join(src) else {
+                continue;
+            };
+            result.pages.push(ref_url);
         }
     }
     result

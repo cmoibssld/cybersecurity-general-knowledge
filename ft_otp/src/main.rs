@@ -3,6 +3,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+mod errors;
 mod generate_key;
 mod password;
 
@@ -19,7 +20,7 @@ struct Param {
     file: PathBuf,
 }
 
-fn check_file(file: &PathBuf) -> Result<File, Box<dyn std::error::Error>> {
+fn check_file(file: &PathBuf) -> Result<File, errors::FtOtpError> {
     Ok(File::open(file)?) // this open is readonly !
 }
 
@@ -43,7 +44,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(param: Param) -> Result<(), Box<dyn std::error::Error>> {
+fn run(param: Param) -> Result<(), errors::FtOtpError> {
     let file = check_file(&param.file)?;
     if param.generate {
         let file_path = generate_key::generate_key(file)?;

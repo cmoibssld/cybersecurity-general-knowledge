@@ -14,4 +14,8 @@ pub enum FtOtpError {
     AESError(#[from] aes_gcm::Error),
     #[error(transparent)]
     InquireError(#[from] inquire::InquireError),
+    #[error("Key file corrupted")]
+    CorruptedKeyFile,
+    #[error(transparent)]
+    TryFailed(#[from] std::array::TryFromSliceError),
 }

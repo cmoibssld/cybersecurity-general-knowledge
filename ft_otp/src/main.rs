@@ -1,3 +1,4 @@
+use crate::errors::FtOtpError;
 use clap::{ArgGroup, Parser};
 use std::fs::File;
 use std::path::PathBuf;
@@ -5,6 +6,7 @@ use std::process::ExitCode;
 
 mod errors;
 mod generate_key;
+mod generate_otp;
 mod password;
 
 #[derive(Debug, Parser)]
@@ -20,7 +22,7 @@ struct Param {
     file: PathBuf,
 }
 
-fn check_file(file: &PathBuf) -> Result<File, errors::FtOtpError> {
+fn check_file(file: &PathBuf) -> Result<File, FtOtpError> {
     Ok(File::open(file)?) // this open is readonly !
 }
 
@@ -44,13 +46,14 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(param: Param) -> Result<(), errors::FtOtpError> {
+fn run(param: Param) -> Result<(), FtOtpError> {
     let file = check_file(&param.file)?;
     if param.generate {
         let file_path = generate_key::generate_key(file)?;
         println!("A key was successfully saved in {}", file_path.display());
     } else {
-        println!("Still need to create a new password");
+        let otp_password = generate_otp::generate_otp(file)?;
+        println!("{otp_password}");
     }
     Ok(())
 }

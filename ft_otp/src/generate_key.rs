@@ -6,19 +6,11 @@ use std::path::PathBuf;
 
 pub fn generate_key(mut key: File) -> Result<PathBuf, errors::FtOtpError> {
     const KEY_FILE: &str = "ft_otp.key";
-    // Generate a key:
-    // File is open, it exists, it was checks for error
-    // 1. Verify it contains at least 64 bytes
-    // 2. Encrypt it
-    // 3. Save it and return path to where it is stored
     check_key_size(&key)?;
     let key = check_key_chars(&mut key)?;
-    // 2.a Ask for a password (how much digits?)
-    // 2.b encrypt the key with the password (6 digits)
-    // 2.c save the encrypted key. Password-key will be asked to generate a 6 digit OTP.
-    let password = password::retreive_password()?;
+    let password = password::retreive_password(true)?;
     let salt = password::passe_moi_le_sel(); // random salt gen -> first 16 bytes of the new ft_otp.key
-    let aes_key = password::built_aes_key(password, &salt)?;
+    let aes_key = password::build_aes_key(password, &salt)?;
     let nonce = password::generate_nonce();
     let encrypted_key = password::encrypt_file(key, aes_key, nonce)?;
     let output_path = PathBuf::from(KEY_FILE);
@@ -30,7 +22,6 @@ pub fn generate_key(mut key: File) -> Result<PathBuf, errors::FtOtpError> {
     encrypted_output.write_all(&salt)?;
     encrypted_output.write_all(&nonce)?;
     encrypted_output.write_all(&encrypted_key)?;
-    // println!("salt: {:?}, nonce: {:?}", salt, nonce);
     Ok(output_path)
 }
 
@@ -45,7 +36,7 @@ fn check_key_size(file: &File) -> Result<(), errors::FtOtpError> {
 fn check_key_chars(file: &mut File) -> Result<Vec<u8>, errors::FtOtpError> {
     let mut buf: Vec<u8> = Vec::new();
     file.read_to_end(&mut buf)?;
-    if buf.iter().all(u8::is_ascii_hexdigit) {
+    if !buf.iter().all(u8::is_ascii_hexdigit) {
         Err(errors::FtOtpError::MustBeHexDigit)
     } else {
         Ok(buf)

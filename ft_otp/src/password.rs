@@ -9,10 +9,12 @@ use rand::RngExt;
 use crate::errors::FtOtpError;
 
 // If I had time this is where I can ask for a more robust password
-pub fn retreive_password() -> Result<String, FtOtpError> {
-    let name = Password::new("Password for encrypted key")
-        .with_display_toggle_enabled()
-        .prompt()?;
+pub fn retreive_password(confirmation: bool) -> Result<String, FtOtpError> {
+    let mut name = Password::new("Password for encrypted key").with_display_toggle_enabled();
+    if !confirmation {
+        name = name.without_confirmation();
+    }
+    let name = name.prompt()?;
     Ok(name)
 }
 
@@ -23,7 +25,7 @@ pub fn passe_moi_le_sel() -> [u8; 16] {
     salt
 }
 
-pub fn built_aes_key(password: String, salt: &[u8; 16]) -> Result<[u8; 32], FtOtpError> {
+pub fn build_aes_key(password: String, salt: &[u8; 16]) -> Result<[u8; 32], FtOtpError> {
     let mut output = [0u8; 32];
     let argon = Argon2::default();
 
@@ -44,4 +46,15 @@ pub fn encrypt_file(
     let cipher = Aes256Gcm::new(&key);
 
     Ok(cipher.encrypt(&nonce, to_encrypt.as_slice())?)
+}
+
+pub fn decrypt_file(
+    to_decrypt: &[u8],
+    aes_key: [u8; 32],
+    nonce: Nonce<Aes256Gcm>,
+) -> Result<Vec<u8>, FtOtpError> {
+    let key = Key::<Aes256Gcm>::from(aes_key);
+    let cipher = Aes256Gcm::new(&key);
+
+    Ok(cipher.decrypt(&nonce, to_decrypt)?)
 }

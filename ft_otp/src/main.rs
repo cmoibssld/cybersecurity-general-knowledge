@@ -45,7 +45,7 @@ fn main() -> ExitCode {
 
 fn run(param: Param) -> Result<(), Box<dyn std::error::Error>> {
     let file = check_file(&param.file)?;
-    if param.generate == true {
+    if param.generate {
         let file_path = generate_key::generate_key(file)?;
         println!("A key was successfully saved in {}", file_path.display());
     } else {

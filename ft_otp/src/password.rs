@@ -1,3 +1,7 @@
+use aes_gcm::{
+    Aes256Gcm, Key, KeyInit,
+    aead::{Aead, Generate, Nonce},
+};
 use argon2::Argon2;
 use inquire::Password;
 use rand::RngExt;
@@ -15,21 +19,34 @@ pub fn retreive_password() -> String {
     }
 }
 
-pub fn passe_moi_le_sel() -> String {
+pub fn passe_moi_le_sel() -> [u8; 16] {
     let mut rng = rand::rng();
-
-    (0..16) // salt of 16 bytes
-        .map(|_| {
-            let char: u8 = rng.random();
-            char as char
-        })
-        .collect()
+    let mut salt = [0u8; 16];
+    rng.fill(&mut salt);
+    salt
 }
 
-pub fn built_aes_key(password: String, salt: &str) -> Option<String> {
-    let mut output: Vec<u8> = Vec::with_capacity(32);
+pub fn built_aes_key(password: String, salt: &[u8; 16]) -> Option<[u8; 32]> {
+    let mut output = [0u8; 32];
     let argon = Argon2::default();
 
-    argon.hash_password_into(password.as_bytes(), salt.as_bytes(), &mut output);
-    String::from_utf8(output).ok()
+    argon
+        .hash_password_into(password.as_bytes(), salt, &mut output)
+        .ok()?;
+    Some(output)
+}
+
+pub fn get_nonce() -> Nonce<Aes256Gcm> {
+    Nonce::<Aes256Gcm>::generate()
+}
+
+pub fn encrypt_file(
+    to_encrypt: Vec<u8>,
+    aes_key: [u8; 32],
+    nonce: Nonce<Aes256Gcm>,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let key = Key::<Aes256Gcm>::from(aes_key);
+    let cipher = Aes256Gcm::new(&key);
+
+    Ok(cipher.encrypt(&nonce, to_encrypt.as_slice())?)
 }

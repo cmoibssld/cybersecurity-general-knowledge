@@ -28,10 +28,10 @@ init:
 		trap 'rm -f "$$install_script"' EXIT; \
 		echo "Installing Rust in $(GOINFRE_DIR)..."; \
 		curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$$install_script"; \
-		sh "$$install_script" -y --default-toolchain stable --profile minimal; \
+		sh "$$install_script" --no-modify-path -y --default-toolchain stable --profile minimal; \
 	fi
-	@if ! $(RUSTUP) run $(RUST_VERSION) rustc --version >/dev/null 2>&1; then \
-		$(RUSTUP) toolchain install $(RUST_VERSION) --profile minimal; \
+	@if ! $(RUSTUP) run stable rustc --version >/dev/null 2>&1; then \
+		$(RUSTUP) toolchain install stable --profile minimal; \
 	fi
 
 

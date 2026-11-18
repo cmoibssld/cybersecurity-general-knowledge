@@ -1,6 +1,7 @@
+use crate::password;
 use std::fmt::Display;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -8,15 +9,15 @@ use thiserror::Error;
 enum GenerateKeyError {
     MustHave64b,
     MustBeHexDigit,
+    CannotDeriveToAES,
 }
-
-mod password;
 
 impl Display for GenerateKeyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MustHave64b => write!(f, "Key must have at least 64 bytes"),
             Self::MustBeHexDigit => write!(f, "Key must contain only Hexadecimal digits"),
+            Self::CannotDeriveToAES => write!(f, "Cannot derive password to AES key"),
         }
     }
 }
@@ -33,7 +34,12 @@ pub fn generate_key(mut file: File) -> Result<PathBuf, Box<dyn std::error::Error
     // 2.b encrypt the key with the password (6 digits)
     // 2.c save the encrypted key. Password-key will be asked to generate a 6 digit OTP.
     let password = password::retreive_password();
-    println!("This is the password (never do that lol): {password}");
+    let salt = password::passe_moi_le_sel(); // random salt gen -> first 16 bytes of the new ft_otp.key
+    println!("thi i the salt: {salt}");
+    let aes_key = password::built_aes_key(password, &salt)
+        .ok_or(Box::new(GenerateKeyError::CannotDeriveToAES))?;
+    let mut encrypted_key = std::fs::File::create("ft_otp.key")?;
+    encrypted_key.write(salt.as_bytes())?;
     Ok(PathBuf::new())
 }
 

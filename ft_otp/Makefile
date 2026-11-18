@@ -6,7 +6,7 @@ RUSTUP_HOME = $(GOINFRE_DIR)/.rustup
 CARGO := $(CARGO_HOME)/bin/cargo
 CARGO_TARGET_DIR = $(GOINFRE_DIR)/target
 RUSTUP := $(CARGO_HOME)/bin/rustup
-RUST_VERSION = 1.86.0
+# RUST_VERSION = 1.86.0
 
 export CARGO_HOME
 export RUSTUP_HOME
@@ -15,7 +15,7 @@ export PATH := $(CARGO_HOME)/bin:$(PATH)
 
 all: init
 	mkdir -p $(CARGO_TARGET_DIR)
-	$(CARGO) +$(RUST_VERSION) build --release --locked
+	$(CARGO) build --release
 	cp $(CARGO_TARGET_DIR)/release/ft_otp ./ft_otp
 
 init:

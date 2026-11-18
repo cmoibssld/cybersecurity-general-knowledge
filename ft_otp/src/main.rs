@@ -2,7 +2,9 @@ use clap::{ArgGroup, Parser};
 use std::fs::File;
 use std::path::PathBuf;
 use std::process::ExitCode;
+
 mod generate_key;
+mod password;
 
 #[derive(Debug, Parser)]
 #[command(group(ArgGroup::new("mode").required(true).args(["generate", "key"])))]

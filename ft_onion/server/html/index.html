@@ -1,352 +1,281 @@
-
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#070a1d">
-  <title>Orbit — Find your way home</title>
+  <title>Welcome to my Tor website</title>
   <style>
-    :root {
-      color-scheme: dark;
-      --ink: #f7f8ff;
-      --muted: #a6acd0;
-      --violet: #9c7cff;
-      --cyan: #66e4ff;
-      --panel: rgba(15, 20, 54, .62);
-      --line: rgba(180, 191, 255, .18);
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    * { box-sizing: border-box; }
-
-    html { min-height: 100%; }
+    html, body { height: 100%; }
 
     body {
-      min-height: 100vh;
-      margin: 0;
-      overflow-x: hidden;
-      color: var(--ink);
-      font: 16px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
       background:
-        radial-gradient(circle at 76% 18%, rgba(80, 57, 180, .28), transparent 25rem),
-        radial-gradient(circle at 14% 82%, rgba(0, 170, 212, .14), transparent 24rem),
-        #070a1d;
+        radial-gradient(ellipse at 20% 80%, rgba(120, 60, 200, .25), transparent 50%),
+        radial-gradient(ellipse at 85% 15%, rgba(40, 120, 220, .2), transparent 45%),
+        #03030c;
+      font-family: system-ui, sans-serif;
+      color: #eef0ff;
     }
 
-    body::before,
-    body::after {
+    /* Star layers: one tiny dot repeated with box-shadow */
+    .stars, .stars::after {
       position: fixed;
-      z-index: -1;
-      width: 2px;
-      height: 2px;
+      top: 0; left: 0;
+      width: 1px; height: 1px;
+      border-radius: 50%;
+      background: transparent;
       content: "";
-      background: #fff;
-      border-radius: 50%;
-      box-shadow: 7vw 11vh #fff, 18vw 29vh #9faeff, 31vw 9vh #fff,
-        44vw 42vh #d0d5ff, 55vw 16vh #fff, 68vw 38vh #a5baff,
-        82vw 10vh #fff, 94vw 52vh #cbd2ff, 12vw 72vh #fff,
-        26vw 91vh #b8c5ff, 47vw 77vh #fff, 73vw 87vh #fff;
-      opacity: .7;
+    }
+    .stars.s1 {
+      box-shadow:
+        5vw 8vh #fff, 12vw 22vh #fff, 19vw 5vh #cfd8ff, 27vw 35vh #fff, 33vw 12vh #fff,
+        41vw 28vh #ffe9c4, 48vw 6vh #fff, 56vw 19vh #fff, 63vw 33vh #cfd8ff, 71vw 9vh #fff,
+        79vw 25vh #fff, 86vw 4vh #fff, 93vw 18vh #ffe9c4, 3vw 45vh #fff, 10vw 61vh #fff,
+        17vw 74vh #cfd8ff, 24vw 88vh #fff, 31vw 55vh #fff, 38vw 93vh #fff, 45vw 67vh #ffe9c4,
+        52vw 82vh #fff, 59vw 49vh #fff, 66vw 71vh #cfd8ff, 73vw 95vh #fff, 80vw 58vh #fff,
+        88vw 79vh #fff, 96vw 66vh #fff, 7vw 97vh #fff, 36vw 42vh #fff, 91vw 41vh #cfd8ff;
+      animation: twinkle 4s ease-in-out infinite;
+    }
+    .stars.s2 {
+      width: 2px; height: 2px;
+      box-shadow:
+        8vw 15vh #fff, 22vw 48vh #bcd0ff, 35vw 3vh #fff, 47vw 52vh #fff, 58vw 11vh #ffe0b0,
+        69vw 44vh #fff, 83vw 31vh #fff, 95vw 7vh #bcd0ff, 14vw 83vh #fff, 29vw 68vh #fff,
+        43vw 86vh #ffe0b0, 61vw 91vh #fff, 77vw 76vh #fff, 90vw 89vh #bcd0ff, 2vw 30vh #fff;
+      animation: twinkle 6s ease-in-out infinite 1.5s;
+    }
+    .stars.s3 {
+      width: 3px; height: 3px;
+      box-shadow:
+        16vw 36vh #fff, 52vw 26vh #fff, 74vw 63vh #fff, 26vw 9vh #fff, 92vw 52vh #fff, 39vw 78vh #fff;
+      filter: drop-shadow(0 0 3px #9fb8ff);
+      animation: twinkle 3s ease-in-out infinite .7s;
     }
 
-    body::before { top: 0; left: 0; }
-    body::after { top: 5vh; left: 3vw; transform: scale(.65); opacity: .45; }
-
-    .shell {
-      width: min(1180px, calc(100% - 48px));
-      min-height: 100vh;
-      margin: 0 auto;
-      padding: 28px 0 42px;
-      display: flex;
-      flex-direction: column;
+    @keyframes twinkle {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .35; }
     }
 
-    nav {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
+    /* Shooting star */
+    .comet {
+      position: fixed;
+      top: 12vh; left: -20vw;
+      width: 140px; height: 2px;
+      background: linear-gradient(90deg, transparent, #fff);
+      border-radius: 2px;
+      transform: rotate(18deg);
+      animation: shoot 9s linear infinite 2s;
+      opacity: 0;
+    }
+    @keyframes shoot {
+      0% { transform: translate(0, 0) rotate(18deg); opacity: 0; }
+      2% { opacity: 1; }
+      10% { transform: translate(130vw, 42vw) rotate(18deg); opacity: 0; }
+      100% { opacity: 0; }
     }
 
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 11px;
-      color: var(--ink);
-      font-size: .82rem;
-      font-weight: 800;
-      letter-spacing: .2em;
-      text-transform: uppercase;
-    }
-
-    .brand-mark {
-      width: 30px;
-      height: 30px;
-      display: grid;
-      place-items: center;
-      border: 1px solid rgba(102, 228, 255, .7);
-      border-radius: 50%;
-      color: var(--cyan);
-      font-size: 15px;
-      box-shadow: 0 0 20px rgba(102, 228, 255, .25);
-    }
-
-    .status {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      color: var(--muted);
-      font-size: .75rem;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-    }
-
-    .status i {
-      width: 7px;
-      height: 7px;
-      display: block;
-      border-radius: 50%;
-      background: #72edb1;
-      box-shadow: 0 0 12px #72edb1;
-    }
-
-    main {
-      flex: 1;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(330px, .82fr);
-      align-items: center;
-      gap: clamp(32px, 7vw, 100px);
-      padding: 62px 0 50px;
-    }
-
-    .eyebrow {
-      margin: 0 0 22px;
-      color: var(--cyan);
-      font-size: .78rem;
-      font-weight: 700;
-      letter-spacing: .18em;
-      text-transform: uppercase;
-    }
-
-    h1 {
-      max-width: 650px;
-      margin: 0;
-      font-size: clamp(3.4rem, 7vw, 6.7rem);
-      line-height: .96;
-      letter-spacing: -.075em;
-    }
-
-    h1 span {
-      display: block;
-      color: transparent;
-      background: linear-gradient(110deg, #fff 5%, #b4a1ff 56%, #66e4ff);
-      -webkit-background-clip: text;
-      background-clip: text;
-    }
-
-    .intro {
-      max-width: 470px;
-      margin: 28px 0 34px;
-      color: var(--muted);
-      font-size: 1.05rem;
-    }
-
-    .actions {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 14px;
-    }
-
-    .button {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      padding: 13px 19px;
-      border: 1px solid rgba(255,255,255,.15);
-      border-radius: 9px;
-      color: var(--ink);
-      font-size: .9rem;
-      font-weight: 700;
-      text-decoration: none;
-      background: rgba(255,255,255,.06);
-      transition: transform .2s ease, border-color .2s ease, background .2s ease;
-    }
-
-    .button.primary {
-      border-color: transparent;
-      color: #090b22;
-      background: linear-gradient(100deg, #bba8ff, #65e5ff);
-      box-shadow: 0 10px 30px rgba(105, 166, 255, .2);
-    }
-
-    .button:hover { transform: translateY(-2px); border-color: var(--cyan); }
-    .button.primary:hover { border-color: transparent; background: linear-gradient(100deg, #d0c3ff, #91eeff); }
-
-    .coordinates {
-      margin-top: 54px;
-      display: flex;
-      gap: 34px;
-      color: var(--muted);
-      font-size: .72rem;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-    }
-
-    .coordinates strong {
-      display: block;
-      margin-top: 5px;
-      color: var(--ink);
-      font-size: .9rem;
-      letter-spacing: .02em;
-    }
-
-    .scene {
-      position: relative;
-      min-height: 520px;
-      display: grid;
-      place-items: center;
-    }
-
+    /* Planet */
     .planet {
-      position: absolute;
-      right: -24%;
-      bottom: 1%;
-      width: 430px;
-      height: 430px;
+      position: fixed;
+      right: -8vmin; bottom: -10vmin;
+      width: 55vmin; height: 55vmin;
       border-radius: 50%;
-      background: radial-gradient(circle at 30% 26%, #927cff, #42319a 42%, #171a59 72%);
-      box-shadow: -20px -20px 70px rgba(121, 106, 255, .24), inset -35px -22px 50px rgba(1, 5, 28, .74);
+      background:
+        repeating-linear-gradient(-20deg,
+          rgba(255, 255, 255, .06) 0 6%, transparent 6% 13%, rgba(0, 0, 0, .08) 13% 18%, transparent 18% 25%),
+        radial-gradient(circle at 32% 30%, #ffb27a, #d4583c 40%, #6a1f3a 72%, #1c0820 100%);
+      box-shadow:
+        0 0 80px rgba(255, 120, 80, .25),
+        inset -30px -25px 60px rgba(0, 0, 0, .7);
+    }
+    .ring {
+      position: absolute;
+      inset: 38% -32%;
+      border-radius: 50%;
+      border: 6px solid rgba(255, 210, 170, .55);
+      box-shadow: 0 0 0 10px rgba(255, 190, 140, .18), 0 0 0 18px rgba(255, 190, 140, .08);
+      transform: rotate(-18deg);
+      /* hide the back half of the ring behind the planet */
+      clip-path: polygon(0 50%, 100% 50%, 100% 100%, 0 100%);
+      animation: sway 20s ease-in-out infinite;
+    }
+    /* Slow tilt back and forth + gentle breathing of the ring */
+    @keyframes sway {
+      0%, 100% { transform: rotate(-24deg) scaleY(1); }
+      50% { transform: rotate(-10deg) scaleY(.8); }
     }
 
-    .planet::after {
-      position: absolute;
-      inset: 20% -12%;
-      content: "";
-      border: 2px solid rgba(177, 220, 255, .3);
+    /* Small blue planet with the crew slowly orbiting it */
+    .small {
+      position: fixed;
+      top: 24vh; left: 18vw;
+      width: 12vmin; height: 12vmin;
       border-radius: 50%;
-      transform: rotate(-24deg);
+      background: radial-gradient(circle at 35% 30%, #8fe3ff, #2a6fd6 50%, #0b1a4a 100%);
+      box-shadow: 0 0 40px rgba(80, 170, 255, .35), inset -8px -8px 18px rgba(0, 0, 0, .6);
     }
-
     .orbit {
       position: absolute;
-      width: 92%;
-      height: 48%;
-      border: 1px solid rgba(137, 212, 255, .25);
+      inset: -90%;
       border-radius: 50%;
-      transform: rotate(-22deg);
+      border: 1px dashed rgba(160, 200, 255, .12);
+      animation: spin 90s linear infinite;
     }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-    .orbit::after {
+    /* Spaceship + astronaut riding the orbit, drifting gently */
+    .crew {
       position: absolute;
-      top: 8%;
-      right: 12%;
-      width: 8px;
-      height: 8px;
-      content: "";
-      border-radius: 50%;
-      background: var(--cyan);
-      box-shadow: 0 0 18px 5px rgba(102, 228, 255, .55);
-    }
-
-    .astronaut {
-      position: relative;
-      z-index: 1;
-      width: min(100%, 360px);
-      filter: drop-shadow(0 26px 28px rgba(0,0,0,.4));
-      animation: float 6s ease-in-out infinite;
-    }
-
-    @keyframes float {
-      0%, 100% { transform: translateY(8px) rotate(2deg); }
-      50% { transform: translateY(-12px) rotate(-2deg); }
-    }
-
-    footer {
+      top: 0; left: 50%;
+      width: 82px; height: 64px;
+      margin: -32px 0 0 -41px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      padding-top: 20px;
-      border-top: 1px solid var(--line);
-      color: #6f769d;
-      font-size: .72rem;
-      letter-spacing: .08em;
-      text-transform: uppercase;
+      gap: 26px;
+      animation: drift 12s ease-in-out infinite;
+    }
+    @keyframes drift {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(6px, -8px); }
     }
 
-    @media (max-width: 760px) {
-      .shell { width: min(100% - 32px, 560px); padding-top: 20px; }
-      .status { display: none; }
-      main { grid-template-columns: 1fr; gap: 0; padding: 70px 0 40px; }
-      .scene { min-height: 360px; order: -1; margin-bottom: 12px; }
-      .planet { right: -15%; bottom: -5%; width: 300px; height: 300px; }
-      .astronaut { width: 270px; }
-      .coordinates { margin-top: 40px; }
-      footer { align-items: flex-start; flex-direction: column; gap: 8px; }
+    .ship {
+      position: relative;
+      width: 26px; height: 64px;
+      transform: rotate(40deg);
+    }
+    .ship .body {
+      position: absolute; inset: 0;
+      border-radius: 50% 50% 40% 40% / 60% 60% 20% 20%;
+      background: linear-gradient(90deg, #9aa3c0, #f4f6ff 45%, #b8bfd8);
+      z-index: 1;
+    }
+    .ship .window {
+      position: absolute;
+      top: 18px; left: 50%;
+      width: 12px; height: 12px; margin-left: -6px;
+      border-radius: 50%;
+      border: 2px solid #6b7391;
+      background: radial-gradient(circle at 35% 35%, #bff4ff, #2a6fd6);
+      z-index: 2;
+    }
+    .ship .fin {
+      position: absolute;
+      bottom: 0;
+      width: 11px; height: 20px;
+      background: #d4583c;
+    }
+    .ship .fin.l { left: -8px; border-radius: 100% 0 0 20%; }
+    .ship .fin.r { right: -8px; border-radius: 0 100% 20% 0; }
+    .ship .flame {
+      position: absolute;
+      top: 96%; left: 50%;
+      width: 12px; height: 22px; margin-left: -6px;
+      border-radius: 50% 50% 50% 50% / 30% 30% 70% 70%;
+      background: radial-gradient(ellipse at 50% 20%, #fff, #ffd36b 35%, #ff6a3a 65%, transparent 72%);
+      transform-origin: top;
+      animation: flicker .15s infinite alternate;
+    }
+    @keyframes flicker { to { transform: scaleY(.7); opacity: .8; } }
+
+    .astro {
+      position: relative;
+      width: 30px; height: 44px;
+      animation: tumble 10s ease-in-out infinite;
+    }
+    @keyframes tumble {
+      0%, 100% { transform: rotate(-15deg); }
+      50% { transform: rotate(12deg); }
+    }
+    .astro div { position: absolute; }
+    .astro .arm, .astro .leg { border-radius: 3px; background: #dfe3f2; }
+    .astro .arm { top: 20px; width: 6px; height: 13px; }
+    .astro .arm.l { left: 1px; transform: rotate(35deg); }
+    .astro .arm.r { right: 1px; transform: rotate(-50deg); }
+    .astro .leg { top: 31px; width: 7px; height: 13px; }
+    .astro .leg.l { left: 7px; transform: rotate(12deg); }
+    .astro .leg.r { left: 16px; transform: rotate(-12deg); }
+    .astro .torso {
+      top: 18px; left: 6px;
+      width: 18px; height: 16px;
+      border-radius: 6px;
+      background: #eef0fa;
+    }
+    .astro .helmet {
+      top: 0; left: 5px;
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: #f4f6ff;
+      box-shadow: inset -3px -3px 4px rgba(0, 0, 0, .25), 0 0 8px rgba(180, 200, 255, .4);
+    }
+    .astro .visor {
+      top: 5px; left: 4px;
+      width: 12px; height: 8px;
+      border-radius: 5px;
+      background: linear-gradient(135deg, #2a3a80, #66e4ff);
+    }
+
+    /* Soft, glowing welcome line */
+    .welcome {
+      position: fixed;
+      top: 6vh; right: 5vw;
+      z-index: 1;
+      text-align: right;
+      font-size: clamp(.85rem, 2.2vw, 1.35rem);
+      font-weight: 200;
+      line-height: 2;
+      letter-spacing: .4em;
+      text-transform: lowercase;
+      color: transparent;
+      background: linear-gradient(90deg, #8fa8ff, #f3e9ff 50%, #ffc9a8);
+      -webkit-background-clip: text;
+      background-clip: text;
+      filter: drop-shadow(0 0 10px rgba(170, 160, 255, .45));
+    }
+    .welcome::after {
+      content: "";
+      display: block;
+      width: 60px; height: 1px;
+      margin: 10px 0 0 auto;
+      background: linear-gradient(90deg, transparent, rgba(200, 200, 255, .6));
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; }
     }
   </style>
 </head>
 <body>
-  <div class="shell">
-    <nav aria-label="Primary navigation">
-      <div class="brand"><span class="brand-mark">✦</span> Orbit / 01</div>
-      <div class="status"><i></i> Systems nominal · Deep space</div>
-    </nav>
+  <div class="stars s1"></div>
+  <div class="stars s2"></div>
+  <div class="stars s3"></div>
+  <div class="comet"></div>
 
-    <main>
-      <section aria-labelledby="page-title">
-        <p class="eyebrow">A quiet place beyond the noise</p>
-        <h1 id="page-title">Go where<br><span>the stars are.</span></h1>
-        <p class="intro">The universe is wide, but your next adventure is only one small step away. Suit up, look up, and find your own horizon.</p>
-        <div class="actions">
-          <a class="button primary" href="#mission">Begin the mission <span aria-hidden="true">→</span></a>
-          <a class="button" href="#signal">View the signal</a>
-        </div>
-        <div class="coordinates" id="mission">
-          <div>Current orbit<strong>Kepler-186f</strong></div>
-          <div>Signal strength<strong>98.4%</strong></div>
-        </div>
-      </section>
+  <div class="planet"><div class="ring"></div></div>
 
-      <section class="scene" aria-label="Astronaut floating above a planet">
-        <div class="orbit" aria-hidden="true"></div>
-        <div class="planet" aria-hidden="true"></div>
-        <svg class="astronaut" viewBox="0 0 360 430" role="img" aria-label="Illustration of an astronaut floating in space" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="suit" x1="0" y1="0" x2="1" y2="1">
-              <stop stop-color="#f8fbff"/>
-              <stop offset="1" stop-color="#aeb6d9"/>
-            </linearGradient>
-            <linearGradient id="visor" x1="0" y1="0" x2="1" y2="1">
-              <stop stop-color="#243477"/>
-              <stop offset="1" stop-color="#67e5fa"/>
-            </linearGradient>
-          </defs>
-          <path d="M91 343c-30 20-45 38-41 51 3 10 18 10 33 0l38-25" fill="none" stroke="#c7d0eb" stroke-linecap="round" stroke-width="22"/>
-          <path d="M234 348c34 22 51 34 52 47 0 11-17 13-34 2l-39-26" fill="none" stroke="#aeb6d9" stroke-linecap="round" stroke-width="22"/>
-          <path d="M117 219c-36 7-56 22-62 44-3 12 7 19 18 11l50-35M242 219c34 6 55 21 63 42 4 12-6 20-17 12l-52-34" fill="none" stroke="url(#suit)" stroke-linecap="round" stroke-width="25"/>
-          <rect x="109" y="185" width="143" height="167" rx="57" fill="url(#suit)" stroke="#fff" stroke-width="4"/>
-          <path d="M142 259h77M142 288h77" stroke="#7f8bb6" stroke-width="5"/>
-          <rect x="163" y="249" width="42" height="23" rx="5" fill="#222b61"/>
-          <circle cx="175" cy="260" r="4" fill="#67e5fa"/>
-          <path d="M160 345l-12 48M207 345l15 48" stroke="#b9c3e3" stroke-linecap="round" stroke-width="29"/>
-          <path d="M145 394l-17 13M223 394l19 11" stroke="#f8fbff" stroke-linecap="round" stroke-width="17"/>
-          <rect x="110" y="75" width="143" height="143" rx="54" fill="url(#suit)" stroke="#fff" stroke-width="4"/>
-          <rect x="123" y="91" width="117" height="82" rx="37" fill="url(#visor)" stroke="#c9f8ff" stroke-width="4"/>
-          <path d="M138 108c27-15 58-15 84 1" fill="none" stroke="#aaf3ff" stroke-linecap="round" stroke-width="5" opacity=".8"/>
-          <path d="M124 181h116" stroke="#8a94ba" stroke-width="7"/>
-          <circle cx="102" cy="139" r="10" fill="#66e4ff"/>
-          <circle cx="261" cy="139" r="10" fill="#9c7cff"/>
-          <path d="M95 203h24M241 203h25" stroke="#aeb6d9" stroke-linecap="round" stroke-width="12"/>
-        </svg>
-      </section>
-    </main>
+  <div class="small"><div class="orbit"><div class="crew">
+    <div class="ship">
+      <div class="flame"></div>
+      <div class="fin l"></div>
+      <div class="fin r"></div>
+      <div class="body"></div>
+      <div class="window"></div>
+    </div>
+    <div class="astro">
+      <div class="arm l"></div>
+      <div class="arm r"></div>
+      <div class="leg l"></div>
+      <div class="leg r"></div>
+      <div class="torso"></div>
+      <div class="helmet"><div class="visor"></div></div>
+    </div>
+  </div></div></div>
 
-    <footer id="signal">
-      <span>Transmission 001 · Welcome aboard</span>
-      <span>Scroll to explore ↓</span>
-    </footer>
-  </div>
+  <p class="welcome">Welcome to my<br>Tor website</p>
 </body>
 </html>

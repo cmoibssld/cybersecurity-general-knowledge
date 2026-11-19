@@ -20,4 +20,6 @@ pub enum FtOtpError {
     TryFailed(#[from] std::array::TryFromSliceError),
     #[error(transparent)]
     TimeError(#[from] std::time::SystemTimeError),
+    #[error(transparent)]
+    HexError(#[from] hex::FromHexError),
 }

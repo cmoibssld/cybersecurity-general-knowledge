@@ -1,11 +1,9 @@
 use aes_gcm::Aes256Gcm;
 use aes_gcm::aead::Nonce;
-use sha1::digest::typenum::Xor;
 use sha1::{Digest, Sha1};
 
 use crate::errors::FtOtpError;
 use crate::password::{self, build_aes_key, decrypt_file};
-use std::fmt::Debug;
 use std::fs::File;
 use std::io::Read;
 use std::time::SystemTime;
@@ -36,16 +34,32 @@ fn retreive_salt_and_nonce(file: &Vec<u8>) -> Result<([u8; 16], Nonce<Aes256Gcm>
     Ok((salt, nonce))
 }
 
-fn hmac_sha1(mut key: Vec<u8>, counter: u64) -> Vec<u8> {
-    let result = Sha1::digest(&key);
-    let o_key_pad = result.iter().map(|x| *x ^ 0x5c).collect();
-    let i_key_pad = result.iter().map(|x| *x ^ 0x36).collect().
+fn hmac_sha1(key: Vec<u8>, counter: u64) -> Vec<u8> {
+    let mut result = key;
+    if result.len() > 64 {
+        result = Sha1::digest(result).to_vec(); // if the key is >= 64 (which is always the case for use) -> bring it back to 20 bytes pads with 0 for reaching 64 and now it fits in one block. Returns the hash aka 64 bytes
+    }
 
-    return 
+    let o_key_pad = result.iter().map(|x| *x ^ 0x5c).collect::<Vec<u8>>();
+    let i_key_pad: Vec<u8> = result.iter().map(|x| *x ^ 0x36).collect::<Vec<u8>>();
+
+    // I must do tho hash to avoid possible attack and lenght-extension attack especially
+    // inner hash = SHA1(i_key_pad || counter)
+    // MAC = SHA1(o_key_pad || innner_hash)
+
+    let mut inner_hash = Sha1::new();
+    inner_hash.update(&i_key_pad);
+    inner_hash.update(counter.to_be_bytes());
+    let inner = inner_hash.finalize();
+
+    let mut outer_hash = Sha1::new();
+    outer_hash.update(o_key_pad);
+    outer_hash.update(inner);
+    outer_hash.finalize().to_vec()
 }
 
 fn htop(key: Vec<u8>, counter: u64) -> Result<(), FtOtpError> {
-    const LENGHT = 6;
+    const LENGHT: i32 = 6;
     let mac = hmac_sha1(key, counter);
     Ok(())
 }

@@ -7,6 +7,7 @@ apk add --no-cache \
 EOF
 
 COPY nginx.conf /etc/nginx/nginx.conf
+COPY html/index.html /etc/pages/index.html
 
 EXPOSE 80
 

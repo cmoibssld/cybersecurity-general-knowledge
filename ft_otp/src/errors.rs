@@ -18,4 +18,6 @@ pub enum FtOtpError {
     CorruptedKeyFile,
     #[error(transparent)]
     TryFailed(#[from] std::array::TryFromSliceError),
+    #[error(transparent)]
+    TimeError(#[from] std::time::SystemTimeError),
 }
